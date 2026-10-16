@@ -21,6 +21,8 @@ export interface Env {
   TASTECAST_KV: KVNamespaceLike;
   /** Workers AI, used only for the optional checked copy rewrite. */
   AI?: AiLike;
+  /** "on" shows the S5 LLM-only comparison panel. */
+  S5_PANEL?: string;
   ASSETS: { fetch(req: Request): Promise<Response> };
 }
 
@@ -43,7 +45,8 @@ export default {
       });
     };
     const qloo = qlooFor(path === '/api/match' ? 'match' : 'resolve');
-    const deps = { qloo, qlooFor, kv, ai: env.AI };
+    const waitUntil = (ctx as { waitUntil?: (p: Promise<unknown>) => void } | undefined)?.waitUntil?.bind(ctx);
+    const deps = { qloo, qlooFor, kv, ai: env.AI, defer: waitUntil, flags: { s5Panel: env.S5_PANEL === 'on' } };
     const root = new Hono();
     root.options('/mcp', () => mcpPreflight());
     root.get('/mcp', async (c) => ((c.req.header('accept') ?? '').includes('text/html') ? c.redirect('/#agents', 302) : handleMcp(c.req.raw, deps)));

@@ -6,7 +6,7 @@
 import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 const root = process.env.TASTECAST_CACHE_DIR ?? './cache';
-const NAMESPACES = ['profiles', 'robustness', 'match', 'resolve', 'qloo'];
+const NAMESPACES = ['profiles', 'robustness', 'match', 'resolve', 'qloo', 's5'];
 const out = [];
 for (const ns of NAMESPACES) {
   const dir = join(root, ns);

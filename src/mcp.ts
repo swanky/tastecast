@@ -3,6 +3,7 @@ import * as z from 'zod/v4';
 import { BudgetExceeded, QlooError } from './qloo/client.js';
 import { budgetMessage, clientSafe, createService, DEMO_LINKS, type Deps } from './app.js';
 import { CHANNELS } from './agent/match.js';
+import { INSTANT_BRANDS } from './instant-brands.js';
 import { CHARACTERS, DISCLOSURE } from './domain/characters.js';
 import { quote } from './content/license.js';
 import { agentRun } from './agent/run.js';
@@ -57,7 +58,7 @@ export function buildMcpServer(deps: Deps, origin: string) {
 
   server.registerTool('resolve_brand', {
     title: 'Resolve a reference brand on Qloo',
-    description: 'Searches Qloo for a reference brand and returns candidates with opaque candidate_id tokens. Exact name matches are flagged; same-name duplicates are labelled and the more popular one is preselected. Show these candidates to your user and ask them to confirm one before calling rank_roster. TasteCast never ranks against an unconfirmed entity.',
+    description: 'Searches Qloo for a reference brand and returns candidates with opaque candidate_id tokens. Exact name matches are flagged; same-name duplicates are labelled and the more popular one is preselected. Show these candidates to your user and ask them to confirm one before calling rank_roster. TasteCast never ranks against an unconfirmed entity. Instant reference brands (stored Qloo results, no new calls): ' + INSTANT_BRANDS.map((b) => b.query).join(', ') + '.',
     inputSchema: z.object({ query: z.string().min(1).max(80).describe('Reference brand name, e.g. "Le Creuset".') }),
     annotations: { readOnlyHint: true, openWorldHint: true },
   }, async ({ query }) => guarded(async () => {
@@ -65,7 +66,7 @@ export function buildMcpServer(deps: Deps, origin: string) {
     if (r.status !== 200) return fail(String(r.body.error));
     const cands = r.body.candidates as { id: string; name: string; exact: boolean; preselected: boolean; disambiguation: string }[];
     const lines = cands.map((c) => `- ${c.name}${c.exact ? ' [exact]' : ''}${c.preselected ? ' [preselected]' : ''}${c.disambiguation ? ` · ${c.disambiguation}` : ''} → candidate_id ${c.id}`);
-    return ok(`${r.body.message}\n${lines.join('\n')}`, { query: r.body.query, message: r.body.message, candidates: cands.map((c) => ({ ...c, candidate_id: c.id })) });
+    return ok(`${r.body.precomputed ? 'Precomputed: stored Qloo results, no new calls.\n' : ''}${r.body.message}\n${lines.join('\n')}`, { query: r.body.query, message: r.body.message, precomputed: r.body.precomputed, candidates: cands.map((c) => ({ ...c, candidate_id: c.id })) });
   }));
 
   server.registerTool('rank_roster', {
@@ -82,7 +83,7 @@ export function buildMcpServer(deps: Deps, origin: string) {
       match_id: m.id, served: m.stored ? 'stored' : 'live', view_url: view(`/brief?match=${m.id}`),
       verdict: { level: d.level === 'clear' ? 'Qloo decided' : 'Close call', reason: d.reason, lead: d.margin, needs: d.threshold, text: d.text, tradeoffs: d.tradeoffs.map((t: any) => t.text) },
       ranking: m.ranking.map((x: any, i: number) => ({ rank: i + 1, character: x.name, slug: x.slug, city: x.city, fit_score: Math.round(x.score * 100), taste_index_sigma: x.parts.indexZ, audience_cosine: x.parts.cosine, why: x.why })),
-      agent_run: m.run, qloo: m.qloo, disclosure: DISCLOSURE,
+      agent_run: m.run, qloo: m.qloo, precomputed: m.precomputed, disclosure: DISCLOSURE,
     };
     const summary = `${data.verdict.level}: ${data.verdict.text}\n` + data.ranking.map((x: any) => `${x.rank}. ${x.character} — fit score ${x.fit_score}/100, taste index ${x.taste_index_sigma >= 0 ? '+' : ''}${x.taste_index_sigma}σ, audience cosine ${x.audience_cosine}`).join('\n') + `\nView: ${data.view_url}`;
     return ok(summary, data);

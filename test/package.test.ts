@@ -39,3 +39,14 @@ describe('endorsement package', () => {
     for (const k of ['usage', 'channels', 'duration', 'price_quote', 'approvals', 'qloo_evidence']) expect(q).toHaveProperty(k);
   });
 });
+
+describe('package location filter', () => {
+  it('a stored core built before the department-store filter is cleaned when the package is rebuilt', () => {
+    const c2 = structuredClone(core) as any;
+    c2.local.city = 'Mexico City';
+    c2.local.places = [{ name: 'Restaurante Liverpool', area: 'Centro', evidenceId: 'ev9' }, ...c2.local.places];
+    const p = buildPackage('id', c2);
+    expect(p.shotList.map((s) => s.location).join(' ')).not.toContain('Liverpool');
+    expect(p.excludedPlaces.find((x) => x.name === 'Restaurante Liverpool')?.reason).toContain('department store Liverpool');
+  });
+});

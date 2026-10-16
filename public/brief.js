@@ -18,7 +18,24 @@ async function init() {
   $('#demos').innerHTML = demos.map((d, i) => `<button class="demo" data-i="${i}" type="button"><b>${esc(d.label)}</b><span>${esc(d.brief.product)} · reference ${esc(d.brief.referenceQuery)}</span>${verdictBadge(d.verdict)}</button>`).join('')
     + '<p class="small muted" style="margin-top:6px">One click fills the brief and runs it. Demo briefs are served from stored Qloo results.</p>';
   $('#demos').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) { fill(demos[Number(b.dataset.i)].brief); $('#brief').requestSubmit(); autoConfirm(); } });
+  api('/api/instant').then(renderInstant).catch(() => { $('#instant').closest('aside')?.querySelector('#instant')?.remove(); });
   return demos;
+}
+
+const short = (n) => n.split(' ')[0];
+const instantBadge = (v) => !v ? '' : v.reason === 'baseline-brand' ? '<em class="badge close">baseline brand</em>'
+  : `<em class="badge ${v.level}">${v.level === 'clear' ? `Qloo decided · ${esc(short(v.leader))}` : `Close call · ${esc(v.viable.map(short).join(' / '))}`}</em>`;
+function renderInstant(list) {
+  const ready = list.filter((b) => b.stored);
+  if (!ready.length) { $('#instant').remove(); return; }
+  $('#instant').innerHTML = ready.map((b) => `<button type="button" class="ib" data-q="${esc(b.query)}" data-cat="${esc(b.category)}"><b>${esc(b.name)}</b>${instantBadge(b.verdict)}</button>`).join('')
+    + '<p class="small muted" style="margin-top:6px">Use one of these as your reference brand, leave the campaign city empty, and your own brief runs on stored Qloo results: no wait, no new Qloo calls. Badges show the verdict for a generic brief; a niche tiebreak can change yours only when scores are within 0.03.</p>';
+  $('#instant').addEventListener('click', (e) => {
+    const b = e.target.closest('button.ib'); if (!b) return;
+    const f = $('#brief'); f.elements.referenceQuery.value = b.dataset.q;
+    if (!f.elements.category.value) f.elements.category.value = b.dataset.cat;
+    (f.elements.brandName.value ? f.elements.product : f.elements.brandName).focus();
+  });
 }
 
 function fill(brief) {
@@ -56,7 +73,8 @@ $('#brief').addEventListener('submit', async (e) => {
     const anyExact = r.candidates.some((c) => c.exact);
     const main = anyExact ? r.candidates.filter((c) => c.exact) : r.candidates;
     const others = anyExact ? r.candidates.filter((c) => !c.exact) : [];
-    $('#confirm').innerHTML = `<p class="note ${anyExact ? '' : 'warn'}">${esc(r.message)}</p>` + main.map(candRow).join('')
+    $('#confirm').innerHTML = (r.precomputed ? `<p class="pre-note">Precomputed · ${esc(r.query)} is an instant brand: this search and the ranking come from stored Qloo results.</p>` : '')
+      + `<p class="note ${anyExact ? '' : 'warn'}">${esc(r.message)}</p>` + main.map(candRow).join('')
       + (others.length ? `<details class="others"><summary>Other Qloo names (not exact matches) · ${others.length}</summary>${others.map(candRow).join('')}</details>` : '')
       + `<p style="margin-top:20px"><button class="btn arrow" id="go" type="button">Confirm and rank</button></p>`;
     $('#go').addEventListener('click', runMatch);
@@ -135,18 +153,34 @@ function render(m) {
       </div>
       <ul class="why">${r.why.map((w) => `<li>${esc(w.text)} ${srcs(w.sourceIds)}</li>`).join('')}</ul>
     </article>`).join('');
-  $('#agent-run').innerHTML = timeline(m.run);
+  $('#agent-run').innerHTML = (m.precomputed && !m.stored ? `<p class="pre-note">Precomputed · ${esc(m.brand.name)} is an instant brand. Your brief ran just now on Qloo results stored ahead of time: ${m.qloo.calls} Qloo lookups, all from storage, 0 new calls.</p>` : '') + timeline(m.run);
+  loadS5(m);
+  renderPackage(m);
+  if (m.package.copy?.reason === 'ai-pending') refreshCopy(m.id);
+  $('#evidence').innerHTML = evidenceHtml(m);
+}
+
+/** The AI rewrite of a fresh run finishes after the response; swap in the stored copy once it is there. */
+async function refreshCopy(id) {
+  for (const wait of [4000, 4000, 6000]) {
+    await new Promise((r) => setTimeout(r, wait));
+    try { const m = await api(`/api/match/${encodeURIComponent(id)}`); if (m.package.copy?.reason !== 'ai-pending') { renderPackage(m); return; } } catch { return; }
+  }
+}
+
+function renderPackage(m) {
   const p = m.package;
   $('#pkg-title').textContent = `${p.character.name} × ${p.brand.name}`;
   const copy = p.copy;
   const copyNote = !copy ? '' : copy.mode === 'ai'
     ? `Copy lines rewritten by Workers AI (${esc(copy.model?.split('/').pop())}) and accepted by the checker: ${copy.accepted.length}. Kept as template: ${copy.rejected.length}${copy.rejected.length ? ` (${esc(copy.rejected.map((x) => x.reason).join('; '))})` : ''}. The checker rejects any line that adds a name, brand, number or first-person claim.`
+    : copy.reason === 'ai-pending' ? 'Copy from the deterministic template for now. The checked Workers AI rewrite is finishing in the background and replaces it here when it is done.'
     : `Copy from the deterministic template${copy.reason === 'ai-failed' ? ' (the AI rewrite failed)' : copy.reason === 'all-rejected' ? ' (the checker rejected every AI rewrite)' : ''}.`;
   $('#package').innerHTML = `
     <p class="lede">${esc(cap(p.brand.product))}, shot in ${esc(p.city)}.<span class="pkg-note">${esc(p.brand.note)}</span></p>
     <div class="pkg">
       <div><h3>Content angle</h3><ul>${p.angle.map((l) => `<li>${esc(l.text)} ${srcs(l.sourceIds)}</li>`).join('')}</ul>
-        <h3>30-second script</h3><table class="data">${p.script30s.map((l) => `<tr><th>${esc(l.t)}</th><td>${esc(l.text)} ${srcs(l.sourceIds)}</td></tr>`).join('')}</table>
+        <h3>30-second script</h3><table class="data times">${p.script30s.map((l) => `<tr><th>${esc(l.t)}</th><td>${esc(l.text)} ${srcs(l.sourceIds)}</td></tr>`).join('')}</table>
         <h3>Image prompt</h3><p class="small">${esc(p.imagePrompt.text)} ${srcs(p.imagePrompt.sourceIds)}</p></div>
       <div><h3>Shot list</h3><table class="data"><tr><th>#</th><th>Location</th><th>Head · gaze · lens</th></tr>${p.shotList.map((s) => `<tr><td>${s.n}</td><td>${esc(s.location)} ${srcs(s.sourceIds)}</td><td>${esc(s.head)}; ${esc(s.gaze)}; ${esc(s.lens)}</td></tr>`).join('')}</table>
         ${p.excludedPlaces?.length ? `<p class="small muted">Left out as locations: ${p.excludedPlaces.map((x) => `${esc(x.name)} (${esc(x.reason)})`).join('; ')} ${srcs([...new Set(p.excludedPlaces.flatMap((x) => x.sourceIds))])}</p>` : ''}
@@ -164,10 +198,27 @@ function render(m) {
       <p class="small"><a href="${esc(p.licenseUrl)}" target="_blank" rel="noopener">GET ${esc(p.licenseUrl)}</a></p></div>
       <pre>${esc(JSON.stringify(ql, null, 2))}</pre></div>`;
   });
-  $('#evidence').innerHTML = `<p class="muted small">Qloo calls for this match: ${m.qloo.calls} (${m.qloo.cached} from cache). Entity IDs are shown as names.</p>` + m.evidence.map((e) => `
+}
+
+function evidenceHtml(m) {
+  return `<p class="muted small">Qloo calls for this match: ${m.qloo.calls} (${m.qloo.cached} from cache). Entity IDs are shown as names.</p>` + m.evidence.map((e) => `
     <details id="${esc(e.id)}"><summary>${esc(e.id)} · ${esc(e.step)} <span class="muted">${esc(e.endpoint)}${e.cached ? ' · cached' : ''}</span></summary>
       <table class="data">${Object.entries(e.params).map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('')}</table>
       <p class="small"><strong>Top results:</strong> ${e.results.map(esc).join(' · ')}</p>${e.note ? `<p class="small muted">${esc(e.note)}</p>` : ''}</details>`).join('');
+}
+
+/** S5 panel: shown only when the server flag is on and an LLM-only version exists for this run. */
+async function loadS5(m) {
+  $('#s5-sec').hidden = true;
+  let r; try { r = await api(`/api/s5/${encodeURIComponent(m.id)}`); } catch { return; }
+  if (!r.available) return;
+  const L = r.llmOnly;
+  $('#s5').innerHTML = `<p class="muted small">The same brief and the same character cards given to ${esc(r.model)} with no Qloo data. ${esc(r.method)}</p>
+    <div class="pkg"><div><h3>Character picked</h3><p>${esc(L.character)}</p><p class="small">${esc(L.why)}</p><h3>Content angle</h3><p class="small">${esc(L.angle)}</p></div>
+      <div><h3>Locations</h3><ul class="small">${L.locations.map((x) => `<li>${esc(x)}</li>`).join('')}</ul><h3>Soundtrack</h3><p class="small">${L.soundtrack.map(esc).join(' · ')}</p>
+      <h3>Styling</h3><ul class="small">${L.styling.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div></div>
+    <p class="small ${r.results ? '' : 'muted'}" style="margin-top:12px">${r.results ? `Blind self-rating (${esc(r.results.ratedAt)}): ${esc(r.results.summary)}${r.results.preferred ? ` For this brief: ${r.results.preferred === 'qloo' ? 'the Qloo version was preferred' : r.results.preferred === 'tie' ? 'no preference' : 'the LLM-only version was preferred'}.` : ''}` : 'No rating yet: the blind self-rating has not been done, so no result is shown.'}</p>`;
+  $('#s5-sec').hidden = false;
 }
 
 addEventListener('hashchange', () => { const el = document.getElementById(location.hash.slice(1)); if (el?.tagName === 'DETAILS') el.open = true; });

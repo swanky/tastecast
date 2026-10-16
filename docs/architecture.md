@@ -112,6 +112,8 @@ test/                  vitest unit tests
 | `POST /api/resolve` | `{"query":"Gentle Monster"}` | `{candidates:[{id,name,disambiguation,popularity,exact,preselected,duplicateOf?}],evidence}`. `id` is an opaque token that the server maps back to the Qloo entity; the confirm step sends it back. No entity IDs reach the client. |
 | `POST /api/match` | `{"brief":{brandName,referenceQuery,category,channels[],durationMonths,city?},"candidateId"}` | `MatchResult {id, brief, brand:{name}, ranking:[{slug,name,score,parts,evidenceIds,why[]}], package, evidence[]}` |
 | `GET /api/package/:id` | none | the stored `MatchResult.package` |
+| `GET /api/instant` | none | `[{name,query,category,stored,verdict:{level,reason,leader,viable[]}}]`: the instant reference brands with their stored generic-brief verdict. |
+| `GET /api/s5/:id` | none | `{ok:true,available:false}` unless the `S5_PANEL` flag is `on` and an LLM-only comparison is stored; then the LLM-only package for that demo, with `results:null` until a rating exists. |
 | `GET /api/license/:id` | none | `LicenseQuote {id, licensor, licensee, character, usage, channels, duration, price_quote:{amount,currency,basis,charged:false}, approvals:{character_operator:false,brand:false}, disclosure, qloo_evidence:[evidenceId], terms_url:null}` |
 
 Evidence entries the client sees carry the endpoint, the parameter **names and display values** (entity IDs replaced by display names), and the top result names.

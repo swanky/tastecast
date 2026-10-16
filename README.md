@@ -25,6 +25,21 @@ TasteCast is for a studio that runs a small roster of original, disclosed AI cha
 
 Direct links: `/brief?demo=0&confirm=1` … `demo=3`. Demo briefs are served from **stored Qloo results** and cost no live calls. Custom briefs make live Qloo calls under a small public budget (40 calls in total; per network 5 searches and 1 ranking a day). When it runs out, the site says so and points back to the demos.
 
+**Instant reference brands.** Eleven well-known brands were run through Qloo ahead of time and stored, so a custom brief that uses one of them as the reference brand returns at once and makes no new Qloo calls. The brief page lists them, and the result carries a "Precomputed" note. Typed variants work (`nike`, `Tajin`, `Stüssy`, `Blue Bottle`). Leave the campaign city empty: a city adds an in-city check that was not precomputed. Verdicts below are for a generic brief and were not tuned.
+
+| Instant brand | Verdict (generic brief) |
+|---|---|
+| Nike | Close call, Itzel leads. Nike is one of the six baseline brands, so the taste index cannot measure it |
+| Starbucks | Close call, Itzel and Ari tied. Also a baseline brand |
+| Glossier | Close call, Itzel leads (lead 0.091, measures disagree) |
+| Aesop | Close call, Ingrid leads by 0.005 |
+| Stüssy | Qloo decided: Itzel Robles (lead 0.190) |
+| Fender | Qloo decided: Ingrid Brekkhus (lead 0.306) |
+| Gentle Monster | Close call, Ari leads (lead 0.071) |
+| Tajín, Innisfree, Le Creuset, Blue Bottle Coffee | Same as the demo briefs above |
+
+Precomputing them cost 27 Qloo calls (Nike 6, Starbucks 5, Glossier, Aesop, Stüssy and Fender 4 each; the other five reused cached results), counted by a dry run before spending (`scripts/instant-cost.ts`).
+
 ## Use it from an agent (MCP)
 
 The same loop is a remote MCP server. Add it to any MCP client:
@@ -59,7 +74,7 @@ Qloo is the decision-maker, not decoration. For each confirmed reference brand t
 
 Fit score = 0.6 × taste index + 0.4 × (cosine + 1) / 2. **"Qloo decided"** needs a lead of at least 0.08 **and** the taste index must pick the same leader by z-score and by raw lift. Otherwise it is a **close call**, with the viable characters and their tradeoffs. Thresholds were set before the test runs and are not tuned per demo (see `docs/milestone-2.md`, `docs/limitations.md`).
 
-Optional: Workers AI rewrites five copy lines once per package. A checker rejects any rewrite that adds a name, a brand from the evidence, a number, or first-person/testimonial wording, or drops the disclosure; rejected lines keep the template text, and evidence ids are never written by the model.
+Optional: Workers AI rewrites five copy lines once per package, in the background after the result is shown (the page swaps in the checked lines when they are ready). A checker rejects any rewrite that adds a name, a brand from the evidence, a number, or first-person/testimonial wording, or drops the disclosure; rejected lines keep the template text, and evidence ids are never written by the model.
 
 ## Architecture
 

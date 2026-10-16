@@ -10,6 +10,7 @@ import { quote } from './content/license.js';
 import { rewriteCopy, type AiLike } from './content/copywriter.js';
 import { agentRun } from './agent/run.js';
 import type { LimitKind } from './store/ip-limit.js';
+import { canonicalQuery, INSTANT_BRANDS, instantBrand } from './instant-brands.js';
 
 export interface Deps {
   qloo: QlooClient;
@@ -18,6 +19,19 @@ export interface Deps {
   kv: KV;
   /** Workers AI binding; absent locally and in tests (template copy). */
   ai?: AiLike;
+  /** Runs work after the response (Workers ctx.waitUntil). When set, a live match answers with the template copy
+   *  and the AI rewrite finishes in the background, so the ranking is not held up by the model. */
+  defer?: (p: Promise<unknown>) => void;
+  /** Feature flags. s5Panel: show the S5 "LLM only vs Qloo" panel (off until the self-rating exists). */
+  flags?: { s5Panel?: boolean };
+}
+
+/** KV value behind the S5 panel (written by the S5 scripts, never by the site). Results stay absent until the user self-rates. */
+export const S5_KEY = 's5:panel';
+export interface S5Panel {
+  model: string; generatedAt: string; method: string;
+  briefs: Record<string, { label: string; llmOnly: { character: string; why: string; angle: string; locations: string[]; soundtrack: string[]; styling: string[] } }>;
+  results?: { ratedAt: string; summary: string; perBrief: { label: string; preferred: 'qloo' | 'llm-only' | 'tie' }[] };
 }
 export interface StoredMatch extends MatchCore { id: string; package: EndorsementPackage; createdAt: string; confirmed?: { exact: boolean; duplicates: number } }
 
@@ -107,10 +121,11 @@ export function characterView(ch: CharacterDef, prof: CharacterProfile | undefin
 export interface ServiceResult { status: 200 | 400 | 404 | 409 | 503; body: Record<string, unknown> }
 
 /** Shared by the HTTP routes and the MCP tools, so both surfaces have the same guards and the same scrub. */
-export function createService({ qloo, qlooFor, kv, ai }: Deps) {
+export function createService({ qloo, qlooFor, kv, ai, defer }: Deps) {
   const client = (k: LimitKind) => qlooFor?.(k) ?? qloo;
   const profiles = () => kv.get<CharacterProfile[]>(PROFILES_KEY);
-  const resolveKey = async (q: string) => `resolve:${await sha(q.toLowerCase())}`;
+  /** Typed instant-brand names map to the stored search text, so "glossier" or "Stüssy" hits the stored Qloo result. */
+  const resolveKey = async (q: string) => `resolve:${await sha(canonicalQuery(q).toLowerCase())}`;
 
   /** Candidates in Qloo's order, with same-name duplicates labelled. The first exact match is the default. */
   async function present(cands: Candidate[]) {
@@ -130,8 +145,9 @@ export function createService({ qloo, qlooFor, kv, ai }: Deps) {
   }
 
   async function resolve(rawQuery: unknown): Promise<ServiceResult> {
-    const query = typeof rawQuery === 'string' ? rawQuery.trim().slice(0, 80) : '';
-    if (!query) return { status: 400, body: { ok: false, error: 'query is required' } };
+    const typed = typeof rawQuery === 'string' ? rawQuery.trim().slice(0, 80) : '';
+    if (!typed) return { status: 400, body: { ok: false, error: 'query is required' } };
+    const query = canonicalQuery(typed);
     const rkey = await resolveKey(query);
     const r = await resolveBrand(client('resolve'), query);
     // Skip identical rewrites: on Workers every set is a KV write, and the free plan allows 1,000 a day.
@@ -139,7 +155,8 @@ export function createService({ qloo, qlooFor, kv, ai }: Deps) {
     if (JSON.stringify(prev) !== JSON.stringify(r.candidates)) await kv.set(rkey, r.candidates);
     const candidates = await present(r.candidates);
     const dups = candidates.filter((c) => c.duplicateOf).length;
-    return { status: 200, body: { ok: true, query, candidates, evidence: clientSafe(r.evidence),
+    const precomputed = !!instantBrand(typed) && r.evidence.cached;
+    return { status: 200, body: { ok: true, query, candidates, evidence: clientSafe(r.evidence), precomputed,
       message: !r.candidates.length ? 'Qloo has no brand by that name. Try a well-known reference brand with a similar audience instead; TasteCast will not invent an ID.'
         : r.candidates.some((x) => x.exact) ? `Confirm which entity is the reference brand before any insights call.${dups ? ` Qloo lists ${dups + 1} entries with this exact name; the more popular one is preselected.` : ''}`
         : `No exact match for "${query}" on Qloo. These are Qloo's nearest names, not your brand. Pick one only if it is a fair stand-in, or search for a well-known reference brand.` } };
@@ -154,7 +171,9 @@ export function createService({ qloo, qlooFor, kv, ai }: Deps) {
   async function ensurePackage(m: StoredMatch): Promise<StoredMatch> {
     const old = m.package as Partial<EndorsementPackage>;
     const outdated = (old.copyVersion ?? 0) < COPY_VERSION;
-    const wantsAi = !!ai && (outdated || (old.copy?.mode === 'template' && old.copy.reason === 'no-ai-binding'));
+    // A background rewrite gets 60 s to land before a read retries it (it can be lost if the worker is evicted).
+    const stalePending = old.copy?.reason === 'ai-pending' && Date.now() - Date.parse(m.createdAt) > 60_000;
+    const wantsAi = !!ai && (outdated || (old.copy?.mode === 'template' && (old.copy.reason === 'no-ai-binding' || stalePending)));
     if (!outdated && !wantsAi) return m;
     let pkg = outdated ? buildPackage(m.id, m) : m.package;
     if (ai) pkg = await rewriteCopy(pkg, m.evidence, ai, await brandNamesOf(m));
@@ -163,7 +182,10 @@ export function createService({ qloo, qlooFor, kv, ai }: Deps) {
     return next;
   }
 
-  const view = (m: StoredMatch, stored: boolean) => clientSafe({ ok: true, stored, ...m, run: agentRun(m, m.package, stored ? 'stored' : 'live', m.confirmed ?? { exact: true, duplicates: 1 }) });
+  /** precomputed: an instant brand whose run used only stored Qloo results (0 new calls). */
+  const view = (m: StoredMatch, stored: boolean) => clientSafe({ ok: true, stored, ...m,
+    precomputed: !!instantBrand(m.brief.referenceQuery) && m.qloo.calls === m.qloo.cached,
+    run: agentRun(m, m.package, stored ? 'stored' : 'live', m.confirmed ?? { exact: true, duplicates: 1 }) });
 
   async function match(rawBrief: unknown, candidateId: unknown): Promise<ServiceResult & { served?: 'stored' | 'live' }> {
     const { brief, error } = validateBrief(rawBrief);
@@ -183,6 +205,12 @@ export function createService({ qloo, qlooFor, kv, ai }: Deps) {
     const confirmed = { exact: picked.exact, duplicates: cands!.filter((c) => normName(c.name) === normName(picked.name)).length };
     let pkg = buildPackage(id, core);
     const draft: StoredMatch = { ...core, id, package: pkg, createdAt: new Date().toISOString(), confirmed };
+    if (ai && defer) {
+      const pending: StoredMatch = { ...draft, package: { ...pkg, copy: { ...pkg.copy, reason: 'ai-pending' } } };
+      await kv.set(`match:${id}`, pending);
+      defer((async () => { const names = await brandNamesOf(draft); await kv.set(`match:${id}`, { ...draft, package: await rewriteCopy(pkg, core.evidence, ai, names) }); })().catch(() => undefined));
+      return { status: 200, served: 'live', body: view(pending, false) };
+    }
     if (ai) pkg = await rewriteCopy(pkg, core.evidence, ai, await brandNamesOf(draft));
     const stored: StoredMatch = { ...draft, package: pkg };
     await kv.set(`match:${id}`, stored);
@@ -209,10 +237,26 @@ export function createService({ qloo, qlooFor, kv, ai }: Deps) {
     }));
   }
 
-  return { resolve, match, getMatch, demos, profiles };
+  /** Instant brands with the verdict of their stored reference run (canonical brief). Read-only. */
+  async function instant() {
+    return Promise.all(INSTANT_BRANDS.map(async (b) => {
+      const brief = instantBrief(b.query, b.category);
+      const cands = (await kv.get<Candidate[]>(await resolveKey(b.query))) ?? [];
+      const pick = cands.find((c) => c.exact);
+      const m = pick ? await kv.get<StoredMatch>(`match:${await sha(JSON.stringify({ v: SCORING_VERSION, brief, brand: pick.id }))}`) : undefined;
+      return { name: pick?.name ?? b.query, query: b.query, category: b.category, stored: !!m,
+        verdict: m ? { level: m.decision.level, reason: m.decision.reason, leader: m.ranking[0].name, viable: m.decision.level === 'close' ? [m.ranking[0].slug, ...m.decision.alternatives].map((s) => CHARACTERS.find((c) => c.slug === s)?.name ?? s) : [m.ranking[0].name] } : null };
+    }));
+  }
+
+  return { resolve, match, getMatch, demos, profiles, instant };
 }
 
 const round2 = (x: number) => Math.round(x * 100) / 100;
+
+/** The brief used for an instant brand's stored reference run (its verdict on the brief page). */
+export const instantBrief = (query: string, category: string): Brief =>
+  validateBrief({ brandName: 'Instant brief', referenceQuery: query, category, product: category, channels: ['instagram'], durationMonths: 3 }).brief!;
 
 export function createApp(deps: Deps) {
   const { kv } = deps;
@@ -250,6 +294,21 @@ export function createApp(deps: Deps) {
   app.get('/api/demos', async (c) => {
     c.header('Cache-Control', 'public, max-age=300');
     return c.json(await svc.demos());
+  });
+
+  app.get('/api/s5/:id', async (c) => {
+    // 200 with available:false (not a 404), so pages do not log a console error for every run while the flag is off.
+    if (!deps.flags?.s5Panel) return c.json({ ok: true, available: false });
+    const panel = await kv.get<S5Panel>(S5_KEY);
+    const b = panel?.briefs[c.req.param('id')];
+    if (!panel || !b) return c.json({ ok: true, available: false });
+    return c.json(clientSafe({ ok: true, available: true, label: b.label, model: panel.model, method: panel.method, generatedAt: panel.generatedAt, llmOnly: b.llmOnly,
+      results: panel.results ? { ratedAt: panel.results.ratedAt, summary: panel.results.summary, preferred: panel.results.perBrief.find((x) => x.label === b.label)?.preferred ?? null } : null }));
+  });
+
+  app.get('/api/instant', async (c) => {
+    c.header('Cache-Control', 'public, max-age=300');
+    return c.json(await svc.instant());
   });
 
   app.post('/api/resolve', async (c) => {

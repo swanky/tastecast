@@ -1,5 +1,6 @@
 import { CHARACTERS, DISCLOSURE } from '../domain/characters.js';
 import type { MatchCore } from '../agent/match.js';
+import { departmentStore } from './places.js';
 
 export interface Line { text: string; sourceIds: string[] }
 export interface Shot { n: number; location: string; action: string; head: string; gaze: string; lens: string; sourceIds: string[] }
@@ -28,14 +29,15 @@ export interface EndorsementPackage {
 export interface CopyReport {
   mode: 'template' | 'ai';
   model?: string;
-  /** Why the template was used: no AI binding (local, tests), the AI call failed, or every rewrite was rejected. */
-  reason?: 'no-ai-binding' | 'ai-failed' | 'all-rejected';
+  /** Why the template was used: no AI binding (local, tests), the AI call failed, every rewrite was rejected,
+   *  or the rewrite is still running after the response (ai-pending; the stored run gets the AI copy). */
+  reason?: 'no-ai-binding' | 'ai-failed' | 'all-rejected' | 'ai-pending';
   accepted: string[];
   rejected: { line: string; reason: string }[];
 }
 
 /** Bump when package building changes, so stored packages are rebuilt once from their stored match core. */
-export const COPY_VERSION = 3;
+export const COPY_VERSION = 4;
 
 /** QA-gate shot pattern: at most one look to camera, varied head angle and lens (characters/qa/image-qa-gate.md). */
 const SHOT_PATTERN = [
@@ -50,7 +52,10 @@ const SHOT_PATTERN = [
 export function buildPackage(id: string, m: MatchCore): EndorsementPackage {
   const top = m.ranking.find((r) => r.slug === (m.featured?.slug ?? m.ranking[0].slug)) ?? m.ranking[0];
   const c = CHARACTERS.find((x) => x.slug === top.slug)!;
-  const L = m.local;
+  // Re-checked here so stored match cores built before a filter change are cleaned when the package is rebuilt.
+  const late = m.local.places.filter((x) => departmentStore(x.name, m.local.city));
+  const L = { ...m.local, places: m.local.places.filter((x) => !late.includes(x)),
+    excludedPlaces: [...(m.local.excludedPlaces ?? []), ...late.map((x) => ({ name: x.name, reason: `inside or named after the department store ${departmentStore(x.name, m.local.city)}, another brand's retail space`, evidenceId: x.evidenceId }))] };
   const angle = L.angles.slice(0, 3);
   const art = L.artists.slice(0, 3);
   const prod = m.brief.product || m.brief.category;

@@ -13,6 +13,8 @@ binding = "ASSETS"
 [vars]
 QLOO_MAX_CALLS = "300"
 QLOO_PUBLIC_MAX_CALLS = "40"
+# S5 "LLM only vs Qloo" panel. Stays "off" until the self-rating exists; see docs/limitations.md.
+S5_PANEL = "off"
 
 # Created with `wrangler kv namespace create TASTECAST_KV`; seeded with scripts/seed-kv.mjs.
 [[kv_namespaces]]

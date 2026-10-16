@@ -284,7 +284,7 @@ export async function runMatch(qloo: QlooClient, profiles: CharacterProfile[], b
 
   const placeEv = importEv(winner, 'profile:places', 'places')[0] ?? '';
   const knownBrands = [brand.name, ...brandNames, ...profiles.flatMap((p) => p.seeds.filter((s) => s.type === 'urn:entity:brand').map((s) => s.matchedName))];
-  const judged = city === wc.city ? winner.places.map((x) => ({ x, v: shootability(x, knownBrands) })) : [];
+  const judged = city === wc.city ? winner.places.map((x) => ({ x, v: shootability(x, knownBrands, city) })) : [];
 
   return {
     brief, brand, ranking, decision: ranked.decision, featured,

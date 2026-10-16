@@ -256,3 +256,12 @@ pre { background: #1b1915; color: #ece6dc; padding: 18px; overflow: auto; font-s
 .agents code { font-size: 14px; }
 @media (max-width: 900px) { .democards { grid-template-columns: 1fr 1fr; } .agents { grid-template-columns: 1fr; } }
 @media (max-width: 520px) { .democards { grid-template-columns: 1fr; } .timeline li { grid-template-columns: 1fr; gap: 2px; } }
+
+/* Script time labels stay lowercase ("0–5s"), unlike other table headers. */
+table.data.times th { text-transform: none; letter-spacing: .02em; font-size: 12px; }
+.instant { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.instant .small { grid-column: 1 / -1; }
+.ib { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; font: 600 14px/1.2 var(--sans); background: transparent; border: 1px solid var(--rule); padding: 8px 10px; cursor: pointer; color: var(--ink); text-align: left; }
+.ib:hover, .ib:focus-visible { border-color: var(--ink); }
+.ib .badge { margin-top: 4px; }
+.pre-note { display: inline-block; margin: 0 0 12px; padding: 6px 10px; font: 600 12px/1.4 var(--sans); letter-spacing: .04em; color: var(--ok); background: var(--ok-bg); border: 1px solid var(--ok); }

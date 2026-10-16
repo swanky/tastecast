@@ -8,9 +8,10 @@ import { handleMcp } from './mcp.js';
 
 const kv = new FileKV(process.env.TASTECAST_CACHE_DIR ?? './cache');
 const qloo = new QlooClient({ apiKey: process.env.QLOO_API_KEY, kv, maxCalls: Number(process.env.QLOO_MAX_CALLS ?? 300) });
+const flags = { s5Panel: process.env.S5_PANEL === 'on' };
 const root = new Hono();
-root.on(['GET', 'POST', 'DELETE'], '/mcp', (c) => handleMcp(c.req.raw, { qloo, kv }));
-root.route('/', createApp({ qloo, kv }));
+root.on(['GET', 'POST', 'DELETE'], '/mcp', (c) => handleMcp(c.req.raw, { qloo, kv, flags }));
+root.route('/', createApp({ qloo, kv, flags }));
 root.get('/brief', serveStatic({ path: './public/brief.html' }));
 root.get('/c/:slug', serveStatic({ path: './public/character.html' }));
 root.use('/*', serveStatic({ root: './public' }));
