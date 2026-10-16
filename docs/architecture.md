@@ -15,16 +15,18 @@ A small brand (or an agency acting for one) wants a disclosed endorsement from a
 
 Everything is proven with tests, live runs and a headless-Chrome screenshot.
 
-**Out of scope for this milestone:** LLM writing (no provider is approved yet, so the package text comes from templates filled with Qloo results), image generation, payments, hosting, the public repo, and the LLM-only comparison column (TC-4, after an LLM provider is approved).
+**Out of scope for this milestone:** LLM writing, image generation, payments, hosting, the public repo, and the LLM-only comparison column. Package text came from templates filled with Qloo results.
+
+**Later (Milestone 4, live now):** Workers AI (Llama 3.3 70B) can rewrite five template lines once per stored package, using only each line's cited Qloo evidence. A checker rejects any rewrite that adds a name, an unmentioned evidence brand or a number, uses first-person or testimonial wording, writes evidence ids, drops the disclosure, or runs past 260 characters. A rejected line keeps the template text, and a failed AI call leaves the whole package on the template. Hosting (Cloudflare Workers) and the public repo also shipped. See [limitations.md](limitations.md) item 14 and [milestone-4.md](milestone-4.md).
 
 ## 2. Decisions and deviations from roadmap-plan.md
 
 | Topic | Roadmap said | Built | Why |
 | --- | --- | --- | --- |
 | Framework | Next.js | **Hono + static HTML/JS** | Swanky asked for portability: the same `createApp()` runs on Node (local), Cloudflare Workers Free and Vercel (Hono adapters). No framework build step. |
-| Brief parsing | LLM picks entity candidates | **Structured form + `/search`** | No LLM provider approved. The user picks the Qloo entity in a confirm step, so every ID still comes from Qloo. |
-| Package text | LLM writes it with source IDs | **Deterministic templates filled from Qloo results** | Same provenance rule (every line carries a source evidence ID). The LLM can rephrase later; it must not add claims. |
-| Repo | `swanky/tastecast`, public | **Local git only** (`/workspace/tastecast`) | Public repo and host are Swanky's decision. |
+| Brief parsing | LLM picks entity candidates | **Structured form + `/search`** | Kept after Workers AI was added: no LLM picks entities. The user confirms the Qloo entity, so every ID comes from Qloo. |
+| Package text | LLM writes it with source IDs | **Templates filled from Qloo results, then an optional checked Workers AI rewrite** | Every line carries a source evidence ID, always taken from the template line. The rewrite sees only that line's evidence; the checker rejects added names, brands, numbers, first-person wording or a dropped disclosure, and rejected lines keep the template text. |
+| Repo | `swanky/tastecast`, public | **Local git only** at this milestone | Public repo and host were Swanky's decision. Later published as `swanky/tastecast` and hosted on Cloudflare Workers. |
 
 ## 3. Product loop (from spike-results-20261015.md, recommended usage)
 

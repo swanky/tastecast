@@ -37,7 +37,7 @@ Written before the code, as the plan. Results are appended at the end.
 5. **Package quality.**
    - Places whose Qloo categories are retail (store, shop, shopping, boutique, mall, department) are dropped as shoot locations, and so are places whose names match a brand in the evidence.
    - Profiles store place categories. They are rebuilt from the cache, which costs 0 Qloo calls.
-   - Optional Workers AI rewrite (`@cf/meta/llama-3.1-8b-instruct-fast`, binding `AI`) of five copy lines: the angle lead and the four script beats.
+   - Optional Workers AI rewrite (`@cf/meta/llama-3.3-70b-instruct-fp8-fast`, binding `AI`; the 8B model was planned first) of five copy lines: the angle lead and the four script beats.
    - A checker rejects any rewritten line that:
      - drops its evidence ids or adds new ones
      - adds a number
