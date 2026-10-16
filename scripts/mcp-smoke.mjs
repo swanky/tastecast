@@ -1,0 +1,30 @@
+// MCP client smoke test with the official SDK: node scripts/mcp-smoke.mjs [https://host/mcp] [demoIndex]
+// Uses a demo brief, so it is served from stored Qloo results and spends no live calls.
+import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
+const url = new URL(process.argv[2] ?? 'http://localhost:8787/mcp');
+const which = Number(process.argv[3] ?? 2);
+const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+const client = new Client({ name: 'tastecast-smoke', version: '1.0.0' });
+await client.connect(new StreamableHTTPClientTransport(url));
+const all = [];
+const call = async (name, args) => { const r = await client.callTool({ name, arguments: args }); all.push(r); if (r.isError) throw new Error(`${name}: ${r.content[0].text}`); return r.structuredContent; };
+console.log('server', client.getServerVersion(), 'protocol', client.transport?.protocolVersion ?? '');
+console.log('tools', (await client.listTools()).tools.map((t) => t.name).join(', '));
+const { demos } = await call('list_demo_briefs', {});
+const d = demos[which];
+const { candidates } = await call('resolve_brand', { query: d.brief.referenceQuery });
+const pick = candidates.find((c) => c.preselected) ?? candidates[0];
+console.log(`resolve "${d.brief.referenceQuery}":`, candidates.map((c) => `${c.name}${c.preselected ? ' [preselected]' : ''}${c.duplicateOf ? ' [duplicate]' : ''}`).join(' | '));
+const rank = await call('rank_roster', { brief: d.brief, candidate_id: pick.candidate_id });
+console.log(`rank_roster: ${rank.verdict.level} (${rank.verdict.reason}) lead ${rank.verdict.lead} / needs ${rank.verdict.needs}; served ${rank.served}; qloo calls ${rank.qloo.calls} (${rank.qloo.cached} cached)`);
+for (const r of rank.ranking) console.log(`  ${r.rank}. ${r.character} fit ${r.fit_score}/100, index ${r.taste_index_sigma}σ, audience cosine ${r.audience_cosine}`);
+console.log('  agent run:', rank.agent_run.steps.map((s) => s.kind).join(' → '));
+console.log('  view:', rank.view_url);
+const { package: p } = await call('draft_package', { match_id: rank.match_id });
+console.log(`draft_package: ${p.character.name} × ${p.brand.name}; disclosure "${p.disclosure}"; copy ${p.copy?.mode} (${p.copy?.accepted?.length ?? 0} accepted, ${p.copy?.rejected?.length ?? 0} kept); excluded places ${p.excludedPlaces?.length ?? 0}`);
+console.log('  angle:', p.angle[0].text, p.angle[0].sourceIds.join(','));
+console.log('  script 0-5s:', p.script30s[0].text);
+const { license } = await call('quote_license', { match_id: rank.match_id });
+console.log(`quote_license: US$${license.price_quote.amount} charged=${license.price_quote.charged} approvals=${JSON.stringify(license.approvals)}`);
+console.log('UUIDs in any tool output:', all.some((r) => UUID.test(JSON.stringify(r))) ? 'FOUND' : 0);
+await client.close();

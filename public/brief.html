@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TasteCast · Brief a character</title>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <meta property="og:title" content="TasteCast · Brief a character">
+  <meta property="og:description" content="Brand brief in, ranked disclosed AI characters out. Every claim traced to Qloo evidence.">
+  <meta property="og:image" content="https://tastecast.swanky-models.workers.dev/og.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+</head>
+<body>
+  <main class="wrap">
+    <section style="padding:56px 0 8px">
+      <div class="eyebrow">The brief</div>
+      <h1 class="title" style="margin-top:14px">Tell us the brand. Qloo ranks the roster.</h1>
+      <p class="lede" style="margin-top:16px">Small and fictional brands have no Qloo data, so you name a well-known reference brand with a similar audience. All three characters are always ranked.</p>
+    </section>
+
+    <div class="section-head"><span class="num">01</span><h2>Brief</h2></div>
+    <div class="tool">
+      <div>
+        <div id="requested"></div>
+        <form id="brief" class="form" novalidate>
+          <label>Your brand <input name="brandName" required placeholder="e.g. your brand name" autocomplete="off"></label>
+          <label>Reference brand on Qloo <input name="referenceQuery" required placeholder="e.g. Le Creuset" autocomplete="off"><small>A real brand whose audience is like yours.</small></label>
+          <label>Category <input name="category" placeholder="e.g. tableware"></label>
+          <label>Product <input name="product" placeholder="e.g. stoneware tea set"></label>
+          <fieldset><legend>Channels</legend>
+            <label class="inline"><input type="checkbox" name="channels" value="instagram" checked> Instagram</label>
+            <label class="inline"><input type="checkbox" name="channels" value="tiktok"> TikTok</label>
+            <label class="inline"><input type="checkbox" name="channels" value="youtube"> YouTube</label>
+            <label class="inline"><input type="checkbox" name="channels" value="web"> Web</label>
+            <label class="inline"><input type="checkbox" name="channels" value="ooh"> Out-of-home</label>
+          </fieldset>
+          <label>License length <select name="durationMonths"><option value="1">1 month</option><option value="3" selected>3 months</option><option value="6">6 months</option><option value="12">12 months</option></select></label>
+          <label>Campaign city <input name="city" placeholder="Optional. Adds an in-city check, no weight"></label>
+          <div class="actions"><button class="btn arrow" type="submit">Find the reference brand on Qloo</button><p class="err" id="brief-err" role="alert"></p></div>
+        </form>
+      </div>
+      <aside>
+        <div class="eyebrow">Try a demo · fictional brands</div>
+        <div class="demos" id="demos" style="margin-top:12px"></div>
+      </aside>
+    </div>
+
+    <section id="confirm-sec" hidden>
+      <div class="section-head"><span class="num">02</span><h2>Confirm the Qloo entity</h2></div>
+      <div id="confirm"></div>
+    </section>
+
+    <section id="result-sec" hidden>
+      <div class="section-head"><span class="num">03</span><h2>Ranked characters</h2></div>
+      <div id="decision"></div>
+      <div id="ranking" class="ranking"></div>
+      <div class="section-head"><span class="num">04</span><h2>Agent run</h2></div>
+      <div id="agent-run"></div>
+      <div class="section-head"><span class="num">05</span><h2 id="pkg-title">Endorsement package</h2></div>
+      <div id="package"></div>
+      <div class="section-head"><span class="num">06</span><h2>License quote <span class="muted" style="font-size:.55em">· shown, never charged</span></h2></div>
+      <div id="license"></div>
+      <div class="section-head"><span class="num">07</span><h2>Evidence</h2></div>
+      <div id="evidence" class="evidence"></div>
+    </section>
+  </main>
+  <script type="module" src="/brief.js"></script>
+</body>
+</html>

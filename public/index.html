@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TasteCast · The roster</title>
+  <meta name="description" content="Three original AI characters, cast for brand briefs with Qloo taste data. Every endorsement is disclosed.">
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="TasteCast · Qloo-powered casting for disclosed AI characters">
+  <meta property="og:description" content="Brand brief in, ranked AI characters out. Qloo's taste data decides, every claim cites its evidence, and close calls are called close.">
+  <meta property="og:image" content="https://tastecast.swanky-models.workers.dev/og.jpg">
+  <meta property="og:url" content="https://tastecast.swanky-models.workers.dev/">
+  <meta name="twitter:card" content="summary_large_image">
+</head>
+<body>
+  <main class="wrap">
+    <section class="hero-home">
+      <div>
+        <div class="eyebrow">The roster · Autumn 2026</div>
+        <h1 class="display">Three characters.<br><span class="italic">One honest</span> match.</h1>
+      </div>
+      <div>
+        <p class="lede">TasteCast casts original AI characters for brand briefs. Qloo's taste data decides who fits, every claim shows its evidence, and when the data can't separate two characters, we say so.</p>
+        <p style="margin-top:24px"><a class="btn arrow" href="#demos">Try a demo brief</a> <a class="btn ghost" href="/brief">Start your own</a></p>
+      </div>
+    </section>
+    <section class="roster" id="roster" aria-label="Characters"></section>
+
+    <div class="section-head" id="demos"><span class="num">One click</span><h2>Four demo briefs, real Qloo results.</h2></div>
+    <p class="muted small" style="margin:-8px 0 18px">Fictional client brands, each with a real reference brand on Qloo. The verdict shown is the stored result of that run; opening a card replays it with the confirm step and costs no new Qloo calls.</p>
+    <div class="democards" id="democards"></div>
+
+    <div class="section-head" id="how"><span class="num">How it works</span><h2>From a brief to a disclosed endorsement, in three steps.</h2></div>
+    <div class="how">
+      <div class="step"><b>Brief</b>Your brand, the product, and a well-known reference brand on Qloo with a similar audience. You confirm the exact Qloo entity before anything runs.</div>
+      <div class="step"><b>Rank</b>The Qloo taste index asks how strongly that brand's fans like each character's music, film, TV and brands, against an everyday-brand baseline. The verdict is "Qloo decided" or "Close call".</div>
+      <div class="step"><b>Package</b>Script, shot list, soundtrack and a license quote, each line traced to its Qloo source and labelled <strong>#ad · AI-generated character</strong>.</div>
+    </div>
+
+    <div class="section-head" id="agents"><span class="num">For agents</span><h2>The same loop, as an MCP server.</h2></div>
+    <div class="agents">
+      <div>
+        <p>Any MCP client can run TasteCast as tools: <code>list_demo_briefs</code>, <code>resolve_brand</code>, <code>rank_roster</code>, <code>draft_package</code> and <code>quote_license</code>. The agent has to pass a <code>candidate_id</code> from <code>resolve_brand</code>, so a person (or the calling agent, on their behalf) confirms the exact Qloo entity before anything is ranked.</p>
+        <p class="small muted">Streamable HTTP, stateless JSON responses. Same Qloo budget and per-visitor limits as the site; license quotes are never charged.</p>
+        <p class="small"><strong>Endpoint</strong> <code id="mcp-url">https://tastecast.swanky-models.workers.dev/mcp</code></p>
+      </div>
+<pre>{
+  "mcpServers": {
+    "tastecast": {
+      "type": "http",
+      "url": "https://tastecast.swanky-models.workers.dev/mcp"
+    }
+  }
+}
+
+# or, from a terminal
+claude mcp add --transport http tastecast \
+  https://tastecast.swanky-models.workers.dev/mcp</pre>
+    </div>
+  </main>
+  <script type="module">
+    import { $, esc, api, img, chrome } from '/common.js';
+    chrome('/');
+    // Old judge links (/?demo=N&confirm=1) now live on /brief.
+    if (new URLSearchParams(location.search).has('demo')) location.replace('/brief' + location.search);
+    const chars = await api('/api/characters').catch((e) => { $('#roster').innerHTML = `<p class="err">${esc(e.message)}</p>`; return []; });
+    $('#roster').innerHTML = chars.map((c, i) => `
+      <a class="cover" href="/c/${esc(c.slug)}">
+        <div class="frame">${img(c.images[0].src, c.images[0].alt, 'loading="eager"')}<span class="no">No. 0${i + 1}</span><span class="tagai">AI character</span></div>
+        <h3>${esc(c.name)}</h3>
+        <div class="eyebrow meta">${esc(c.city)} · ${c.age}</div>
+        <p>${esc(c.tagline)}</p>
+      </a>`).join('');
+    const demos = await api('/api/demos').catch(() => []);
+    $('#democards').innerHTML = demos.map((d) => {
+      const v = d.verdict;
+      const badge = !v ? '' : v.level === 'clear' ? `<em class="badge">Qloo decided · ${esc(v.leader)}</em>` : `<em class="badge close">Close call · ${esc(v.viable.join(' or '))}</em>`;
+      const lead = v ? `<div class="small muted">Lead ${v.margin.toFixed(3)} · needs 0.08</div>` : '';
+      return `<a class="democard" href="${esc(d.href)}"><div class="eyebrow">Reference · ${esc(d.brief.referenceQuery)}</div><b>${esc(d.label)}</b><div class="small">${esc(d.brief.product)}</div>${badge}${lead}<span class="go">Run this brief →</span></a>`;
+    }).join('');
+  </script>
+</body>
+</html>

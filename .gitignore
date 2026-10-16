@@ -1,0 +1,9 @@
+node_modules/
+cache/
+private/
+.env*
+public/characters/
+out/
+*.log
+.wrangler/
+.dev.vars*

@@ -1,0 +1,25 @@
+name = "tastecast"
+main = "src/server.worker.ts"
+compatibility_date = "2026-10-16"
+workers_dev = true
+preview_urls = false
+
+# public/ including public/assets (web-size character images, OFL fonts).
+# Matching files are served before the worker runs; /api/* and /c/:slug fall through to it.
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+[vars]
+QLOO_MAX_CALLS = "300"
+QLOO_PUBLIC_MAX_CALLS = "40"
+
+# Created with `wrangler kv namespace create TASTECAST_KV`; seeded with scripts/seed-kv.mjs.
+[[kv_namespaces]]
+binding = "TASTECAST_KV"
+id = "b708c051a74b4d3fb56eaec65a903469"
+
+# QLOO_API_KEY is a secret: `wrangler secret put QLOO_API_KEY` (never in this file).
+
+[ai]
+binding = "AI"

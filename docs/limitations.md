@@ -1,0 +1,27 @@
+# Limitations and honest caveats
+
+TasteCast is a demo. These are the ways its output can mislead if read too literally.
+
+1. **Affinity is not purchase probability.** Qloo affinity says an audience over- or under-indexes on something. It does not say anyone will buy.
+2. **Characters are not real users.** A character's "taste" is a set of seed entities chosen by the operator. Every endorsement says `#ad · AI-generated character`, and the license states it is not a testimonial.
+3. **Taste overlap is weak, so it has zero weight.** Shared Qloo tags between brand and character are usually 0 to 0.1. Weighted tag affinity (`filter.results.tags`) was tried in milestone 2 and disagreed with the entity signal: the tags are generic adjectives. Both are shown only as context.
+4. **Itzel and Ari have nearly identical audience vectors.** For youth brands their age and gender cosines are within 0.003 of each other. The Qloo taste index (milestone 2) is what separates them, for example on Gentle Monster (+3.33σ vs +1.94σ) and Innisfree (+1.96σ vs +0.39σ).
+5. **Niche tiebreak is operator data.** It only acts when the gap is under 0.03 and is labelled in the UI as *not Qloo data*. In milestone 1 it decided two of the three demos. Since milestone 2 it fires on none of them.
+6. **The fit set is small, so fit has zero weight.** The explainability fit check compares the reference brand with the house brands, and Qloo returns 3 results, not 4. It stays as context.
+7. **The taste index is new and lightly validated.** The everyday-brand panel (Starbucks, Nike, Uniqlo, IKEA, Patagonia, L.L.Bean), the 0.6 / 0.4 weights, the ±3σ mapping and the 0.02 SD floor were all chosen during milestone 2. Only 9 briefs were checked (3 demos plus 6 sensitivity briefs). TV and film seeds are not covered.
+8. **The coffee demo is a close call.** For Blue Bottle Coffee, the spread-adjusted index picks Itzel and raw lift picks Ingrid. The UI shows both as viable instead of claiming a winner. Carhartt is also a close call.
+9. **The campaign city does not change the score.** City-conditioned affinities sit on a different scale from the global baseline (+2 to +5σ for every seed), and Qloo sometimes returns no affinity at all for a character's seeds in a city. The city adds a no-weight in-city line instead.
+10. **The Drift Check tolerance was set after seeing the data.** The first rule (strict peak bucket) flagged Itzel, whose seeds peak one bucket younger than her stated 25–29. We added an "adjacent" level (1 bucket = adjacent, ≥2 or non-positive stated-bucket affinity = drift). Ari stays at drift: she is 23, but her seeds peak at 30–34.
+11. **Ingrid's female affinity is slightly negative (−0.03)** for her seed set, even though she is styled for a female-skewing audience.
+12. **Places can include landmarks or generic venues.** Place results come from Qloo and are not curated. The shot list warns against landmark clichés, but the place names are passed through as they are.
+13. **Reference brand, not your brand.** Small brands are usually not on Qloo (for example Hario returned nothing), so the brief asks for a well-known reference brand. The ranking describes that reference brand's audience.
+14. **Deterministic templates, no LLM.** Copy is generated from templates and sourced facts. It is readable but plain.
+15. **Prices are illustrative.** The tier base × channel weight × duration factor is a demo formula, never charged.
+16. **TV and film seeds are in the taste index (milestone 3).** Coverage rose from 10 to 12 of 12 seeds, but the Qloo-decided rate dropped from 9 to 8 of 18 briefs, and the Gentle Monster demo is now a close call (0.071).
+17. **Close calls are common.** 10 of 18 real briefs are close calls. This is the honest state of the signal for three characters whose Qloo audiences overlap. It is not a UI bug.
+18. **Expectations are ours, not ground truth.** On 4 of 18 briefs Qloo picked someone other than the character we expected (for example Fender → Ingrid). We report these and do not tune them away.
+19. **Qloo `/search` never says "unknown" for multi-word names.** It returns nearest names. TasteCast marks exact matches and warns when there are none, but a person still has to confirm the entity.
+20. **Images are web-size copies.** `public/assets/` ships ≤1280 px JPEGs (CC BY-NC 4.0) and the OFL fonts; the source library stays private.
+21. **Fits on character pages come from the cached test briefs**, so they change when new briefs are run.
+22. **The AI copy checker guards names, brands, numbers and first-person claims, not adjectives.** A rewrite may add lowercase style words. On the demos these came from the cited Qloo tags, but the checker does not enforce that.
+23. **MCP rank_roster on a custom brief spends the shared public budget** (40 calls total, per network 5 searches and 1 ranking a day). Demo briefs cost nothing.

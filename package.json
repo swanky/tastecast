@@ -1,0 +1,37 @@
+{
+  "name": "tastecast",
+  "version": "1.0.0",
+  "description": "TasteCast: Qloo-grounded matching of brand briefs to disclosed AI characters",
+  "scripts": {
+    "dev": "tsx src/server.node.ts",
+    "start": "tsx src/server.node.ts",
+    "precompute": "tsx scripts/precompute.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p .",
+    "scan-public": "node scripts/scan-public.mjs",
+    "dev:worker": "wrangler dev --local",
+    "seed-kv": "node scripts/seed-kv.mjs",
+    "deploy": "wrangler deploy"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@hono/node-server": "^2.1.5",
+    "@modelcontextprotocol/server": "^2.3.1",
+    "hono": "^4.13.13",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261016.1",
+    "@modelcontextprotocol/client": "^2.3.1",
+    "@types/node": "^26.6.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.4",
+    "wrangler": "^4.151.0"
+  },
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  }
+}
