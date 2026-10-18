@@ -5,6 +5,8 @@ const q = new URLSearchParams(location.search);
 let chars = [];
 let pending = null;
 let requested = null;
+/** True when a demo link or demo button pressed Confirm for the visitor; the agent run then says so. */
+let autoConfirmed = false;
 
 const verdictBadge = (v) => !v ? '' : `<em class="badge ${v.level}">${v.level === 'clear' ? `Qloo decided · ${esc(v.leader.split(' ')[0])}` : `Close call · ${esc(v.viable.map((n) => n.split(' ')[0]).join(' / '))}`}</em>`;
 
@@ -86,7 +88,8 @@ async function runMatch() {
   const id = document.querySelector('input[name=cand]:checked')?.value;
   $('#result-sec').hidden = false; $('#ranking').innerHTML = '<p class="muted">Running the Qloo taste loop…</p>'; $('#decision').innerHTML = '';
   try {
-    const m = await api('/api/match', { brief: pending, candidateId: id });
+    const confirmation = autoConfirmed ? 'auto' : 'person'; autoConfirmed = false;
+    const m = await api('/api/match', { brief: pending, candidateId: id, confirmation });
     render(m);
     history.replaceState(null, '', `/brief?match=${m.id}`);
     $('#result-sec').scrollIntoView({ behavior: 'smooth' });
@@ -119,11 +122,11 @@ function eyebrow(d, m) {
   }[reason] ?? (d.level === 'clear' ? 'Qloo decided' : 'Close call');
 }
 
-const KIND = { plan: 'Plan', tool: 'Tool', human: 'Human', check: 'Check', stop: 'Stop' };
+const KIND = { plan: 'Plan', tool: 'Tool', human: 'Person', check: 'Check', stop: 'Stop' };
 function timeline(run) {
   if (!run) return '';
   const q = run.qloo;
-  return `<p class="muted small">Served ${run.served === 'stored' ? 'from the stored run' : 'live'} · Qloo calls in this run: ${q.calls} (${q.cached} answered from cache). Each step below is built from this run's data.</p>
+  return `<p class="muted small">Served ${run.served === 'stored' ? 'from the stored run' : 'live'} · Qloo calls in this run: ${q.calls} (${q.cached} answered from cache). The step order is fixed; what each step reports comes from this run's data.</p>
     <ol class="timeline">${run.steps.map((s) => `<li class="t-${s.kind} ${s.status ? `s-${s.status}` : ''}">
       <span class="kind">${KIND[s.kind]}</span>
       <div><b>${esc(s.title)}</b>${s.status === 'pass' ? ' <span class="ok">✓</span>' : s.status === 'fail' ? ' <span class="no">✗</span>' : ''}
@@ -184,8 +187,9 @@ function renderPackage(m) {
         <h3>Image prompt</h3><p class="small">${esc(p.imagePrompt.text)} ${srcs(p.imagePrompt.sourceIds)}</p></div>
       <div><h3>Shot list</h3><table class="data"><tr><th>#</th><th>Location</th><th>Head · gaze · lens</th></tr>${p.shotList.map((s) => `<tr><td>${s.n}</td><td>${esc(s.location)} ${srcs(s.sourceIds)}</td><td>${esc(s.head)}; ${esc(s.gaze)}; ${esc(s.lens)}</td></tr>`).join('')}</table>
         ${p.excludedPlaces?.length ? `<p class="small muted">Left out as locations: ${p.excludedPlaces.map((x) => `${esc(x.name)} (${esc(x.reason)})`).join('; ')} ${srcs([...new Set(p.excludedPlaces.flatMap((x) => x.sourceIds))])}</p>` : ''}
-        <h3>Soundtrack</h3><p class="small">${p.soundtrack.map((l) => `${esc(l.text)} ${srcs(l.sourceIds)}`).join(' · ')}</p>
-        <h3>Styling</h3><ul class="small">${[...p.pairings, ...p.wardrobe].map((l) => `<li>${esc(l.text)} ${srcs(l.sourceIds)}</li>`).join('')}</ul></div>
+        <h3>Soundtrack direction</h3><p class="small muted">Qloo artist affinities for the mood, not cleared or licensed music.</p><p class="small">${p.soundtrack.map((l) => `${esc(l.text)} ${srcs(l.sourceIds)}`).join(' · ')}</p>
+        <h3>Styling</h3><ul class="small">${[...p.pairings, ...p.wardrobe].map((l) => `<li>${esc(l.text)} ${srcs(l.sourceIds)}</li>`).join('')}</ul>
+        <p class="small muted">Place, brand and artist names are Qloo-sourced references for mood and location. They are not endorsements by those businesses or people, and not permissions to use them.</p></div>
     </div>
     <p class="small muted" style="margin-top:14px">${copyNote}</p>
     <div class="adbar"><span>${esc(p.disclosure)}</span><span>${esc(IDENTITY)}</span></div>
@@ -215,7 +219,7 @@ async function loadS5(m) {
   const L = r.llmOnly;
   $('#s5').innerHTML = `<p class="muted small">The same brief and the same character cards given to ${esc(r.model)} with no Qloo data. ${esc(r.method)}</p>
     <div class="pkg"><div><h3>Character picked</h3><p>${esc(L.character)}</p><p class="small">${esc(L.why)}</p><h3>Content angle</h3><p class="small">${esc(L.angle)}</p></div>
-      <div><h3>Locations</h3><ul class="small">${L.locations.map((x) => `<li>${esc(x)}</li>`).join('')}</ul><h3>Soundtrack</h3><p class="small">${L.soundtrack.map(esc).join(' · ')}</p>
+      <div><h3>Locations</h3><ul class="small">${L.locations.map((x) => `<li>${esc(x)}</li>`).join('')}</ul><h3>Soundtrack direction</h3><p class="small muted">Qloo artist affinities for the mood, not cleared or licensed music.</p><p class="small">${L.soundtrack.map(esc).join(' · ')}</p>
       <h3>Styling</h3><ul class="small">${L.styling.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div></div>
     <p class="small ${r.results ? '' : 'muted'}" style="margin-top:12px">${r.results ? `Blind self-rating (${esc(r.results.ratedAt)}): ${esc(r.results.summary)}${r.results.preferred ? ` For this brief: ${r.results.preferred === 'qloo' ? 'the Qloo version was preferred' : r.results.preferred === 'tie' ? 'no preference' : 'the LLM-only version was preferred'}.` : ''}` : 'No rating yet: the blind self-rating has not been done, so no result is shown.'}</p>`;
   $('#s5-sec').hidden = false;
@@ -225,7 +229,8 @@ addEventListener('hashchange', () => { const el = document.getElementById(locati
 
 async function autoConfirm() {
   for (let i = 0; i < 80 && !document.querySelector('#go'); i++) await new Promise((r) => setTimeout(r, 100));
-  document.querySelector('#go')?.click();
+  const go = document.querySelector('#go');
+  if (go) { autoConfirmed = true; go.click(); }
 }
 
 async function deepLink(demos) {

@@ -19,24 +19,40 @@ const PHASES: { title: string; test: (e: Evidence) => boolean; why: string }[] =
   { title: 'Local package research', test: (e) => e.step.startsWith('local-'), why: "Tags, artists and brands for the chosen character's city and age bucket." },
 ];
 
+/** Who picked the Qloo entity. The server can prove only that the candidate token came from a stored search for
+ *  this query text, so the trace says how the confirmation arrived instead of claiming a person chose it.
+ *  person: the Confirm button was clicked in the browser. auto: a demo link (confirm=1) or a one-click demo
+ *  pressed it for the visitor. mcp: the calling agent passed a candidate_id. unknown: a stored run opened by id. */
+export type Confirmation = 'person' | 'auto' | 'mcp' | 'unknown';
+
+const CONFIRM_STEP: Record<Confirmation, { title: string; kind: StepKind; how: string }> = {
+  person: { title: 'Person confirmed the Qloo entity', kind: 'human', how: 'Picked in the browser' },
+  auto: { title: 'Qloo entity confirmed automatically (demo link)', kind: 'check', how: 'The demo link pressed Confirm for you and kept the preselected candidate; open the brief without confirm=1 to choose it yourself' },
+  mcp: { title: 'Qloo entity confirmed by the calling agent', kind: 'check', how: 'The MCP client passed a candidate_id from resolve_brand; TasteCast checks the token came from that search, not who chose it' },
+  unknown: { title: 'Qloo entity confirmed before ranking', kind: 'check', how: 'Stored run' },
+};
+
 /**
- * Turns a stored or fresh match into the agent's step list. Every step is derived from data the run produced
- * (the brief, the confirmed candidate, the evidence ledger, the decision and the package), never from fixed copy.
+ * Turns a stored or fresh match into the agent's step list. The step order and the short phase descriptions are
+ * fixed text; what each step reports (entity, calls, cache hits, evidence ids, check results, verdict, package)
+ * comes from data the run produced.
  */
 const pkgIds = (p: EndorsementPackage) => [...new Set([...p.angle, ...p.script30s, ...p.shotList, ...p.soundtrack, p.imagePrompt].flatMap((l) => l.sourceIds))].sort((a, b) => Number(a.slice(2)) - Number(b.slice(2)));
 
-export function agentRun(m: MatchCore, pkg: EndorsementPackage, served: 'live' | 'stored', confirmed: { exact: boolean; duplicates: number }): AgentRun {
+export function agentRun(m: MatchCore, pkg: EndorsementPackage, served: 'live' | 'stored', confirmed: { exact: boolean; duplicates: number }, confirmation: Confirmation = 'unknown'): AgentRun {
   const b = m.brief; const d = m.decision; const w = m.ranking[0];
   const plan = [
-    `Resolve "${b.referenceQuery}" on Qloo and wait for a person to confirm the entity`,
+    `Resolve "${b.referenceQuery}" on Qloo and wait for the entity to be confirmed`,
     'read the brand audience', 'run the taste index for all three characters',
     ...(b.city ? [`add a no-weight in-city check for ${b.city}`] : []),
     'run context checks', 'self-check the verdict (lead and both index measures)',
     `draft the package for ${b.character ? `${nm(b.character)} (requested)` : 'the leader'}`, 'quote a license and stop for human approval',
   ];
+  const cf = CONFIRM_STEP[confirmation];
+  const who = confirmation === 'person' ? 'the person' : 'the confirmation';
   const steps: AgentStep[] = [
-    { kind: 'plan', title: 'Plan', detail: plan.join(' → ') + '.', evidenceIds: [], status: 'info' },
-    { kind: 'human', title: 'Human confirmed the Qloo entity', detail: `${m.brand.name}${confirmed.exact ? ', exact name match' : ', not an exact name match (a stand-in the person accepted)'}${confirmed.duplicates > 1 ? `; Qloo lists ${confirmed.duplicates} entries with this name and the person kept the preselected, more popular one` : ''}. No insights call ran before this.`, evidenceIds: [], status: 'pass' },
+    { kind: 'plan', title: 'Plan (derived from the brief, not generated)', detail: plan.join(' → ') + '.', evidenceIds: [], status: 'info' },
+    { kind: cf.kind, title: cf.title, detail: `${cf.how}: ${m.brand.name}${confirmed.exact ? ', exact name match' : `, not an exact name match (a stand-in ${who} accepted)`}${confirmed.duplicates > 1 ? `; Qloo lists ${confirmed.duplicates} entries with this name and ${who} kept the preselected, more popular one` : ''}. The server refuses to rank without a confirmed candidate, so no insights call ran before this.`, evidenceIds: [], status: 'pass' },
   ];
   for (const ph of PHASES) {
     const ev = m.evidence.filter(ph.test);
@@ -59,7 +75,7 @@ export function agentRun(m: MatchCore, pkg: EndorsementPackage, served: 'live' |
   const verdict = d.level === 'clear' ? `Qloo decided: ${nm(w.slug)}.` : `Close call: ${[w.slug, ...d.alternatives].map(nm).join(' and ')} stay viable; the person chooses on the tradeoffs.`;
   steps.push({ kind: 'check', title: 'Verdict', detail: verdict, evidenceIds: [], status: d.level === 'clear' ? 'pass' : 'info' });
   const c = pkg.copy;
-  steps.push({ kind: 'tool', title: `Draft package for ${pkg.character.name}`, detail: `Every line carries its evidence ids.${pkg.excludedPlaces.length ? ` Left out ${pkg.excludedPlaces.length} Qloo place${pkg.excludedPlaces.length > 1 ? 's' : ''} that are shops or other brands.` : ''} Copy: ${c.mode === 'ai' ? `Workers AI rewrite, ${c.accepted.length} line${c.accepted.length === 1 ? '' : 's'} accepted by the checker, ${c.rejected.length} kept as template` : c.reason === 'no-ai-binding' ? 'deterministic template' : c.reason === 'ai-pending' ? 'template for now; the checked Workers AI rewrite is finishing in the background' : c.reason === 'ai-failed' ? 'template (the AI call failed)' : 'template (the checker rejected every AI rewrite)'}.`, evidenceIds: pkgIds(pkg), status: 'info' });
+  steps.push({ kind: 'tool', title: `Draft package for ${pkg.character.name}`, detail: `Every line carries its evidence ids.${pkg.excludedPlaces.length ? ` Left out ${pkg.excludedPlaces.length} Qloo place${pkg.excludedPlaces.length === 1 ? ' that is' : 's that are'} not a fit for the shoot (other brands' shops, or hotels and bars for a non-hospitality product).` : ''} Copy: ${c.mode === 'ai' ? `Workers AI rewrite, ${c.accepted.length} line${c.accepted.length === 1 ? '' : 's'} accepted by the checker, ${c.rejected.length} kept as template` : c.reason === 'no-ai-binding' ? 'deterministic template' : c.reason === 'ai-pending' ? 'template for now; the checked Workers AI rewrite is finishing in the background' : c.reason === 'ai-failed' ? 'template (the AI call failed)' : 'template (the checker rejected every AI rewrite)'}.`, evidenceIds: pkgIds(pkg), status: 'info' });
   steps.push({ kind: 'stop', title: 'Stop: waiting for people', detail: `License quote issued with charged:false. Character operator and brand approvals stay unchecked; nothing is published or paid.`, evidenceIds: [], status: 'info' });
   return { steps, served, qloo: m.qloo };
 }

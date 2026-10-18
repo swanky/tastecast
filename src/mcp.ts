@@ -75,7 +75,7 @@ export function buildMcpServer(deps: Deps, origin: string) {
     inputSchema: z.object({ brief: briefSchema, candidate_id: z.string().min(3).max(40) }),
     annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: true },
   }, async ({ brief, candidate_id }) => guarded(async () => {
-    const r = await svc.match(brief, candidate_id);
+    const r = await svc.match(brief, candidate_id, 'mcp');
     if (r.status !== 200) return fail(String(r.body.error));
     const m = r.body as any;
     const d = m.decision;

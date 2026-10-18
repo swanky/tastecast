@@ -8,7 +8,7 @@ import { CHANNELS, normName, resolveBrand, runMatch, type Brief, type Candidate,
 import { buildPackage, COPY_VERSION, type EndorsementPackage } from './content/package.js';
 import { quote } from './content/license.js';
 import { rewriteCopy, type AiLike } from './content/copywriter.js';
-import { agentRun } from './agent/run.js';
+import { agentRun, type Confirmation } from './agent/run.js';
 import type { LimitKind } from './store/ip-limit.js';
 import { canonicalQuery, INSTANT_BRANDS, instantBrand } from './instant-brands.js';
 
@@ -124,6 +124,8 @@ export interface ServiceResult { status: 200 | 400 | 404 | 409 | 503; body: Reco
 export function createService({ qloo, qlooFor, kv, ai, defer }: Deps) {
   const client = (k: LimitKind) => qlooFor?.(k) ?? qloo;
   const profiles = () => kv.get<CharacterProfile[]>(PROFILES_KEY);
+  /** Qloo place kinds by name from the stored profiles, so a rebuilt package can re-run the location filter (0 Qloo calls). */
+  const placeKinds = async () => new Map((await profiles() ?? []).flatMap((p) => p.places.map((x) => [x.name, x.kinds ?? []] as [string, string[]])));
   /** Typed instant-brand names map to the stored search text, so "glossier" or "Stüssy" hits the stored Qloo result. */
   const resolveKey = async (q: string) => `resolve:${await sha(canonicalQuery(q).toLowerCase())}`;
 
@@ -175,7 +177,7 @@ export function createService({ qloo, qlooFor, kv, ai, defer }: Deps) {
     const stalePending = old.copy?.reason === 'ai-pending' && Date.now() - Date.parse(m.createdAt) > 60_000;
     const wantsAi = !!ai && (outdated || (old.copy?.mode === 'template' && (old.copy.reason === 'no-ai-binding' || stalePending)));
     if (!outdated && !wantsAi) return m;
-    let pkg = outdated ? buildPackage(m.id, m) : m.package;
+    let pkg = outdated ? buildPackage(m.id, m, { placeKinds: await placeKinds() }) : m.package;
     if (ai) pkg = await rewriteCopy(pkg, m.evidence, ai, await brandNamesOf(m));
     const next = { ...m, package: pkg };
     await kv.set(`match:${m.id}`, next);
@@ -183,11 +185,12 @@ export function createService({ qloo, qlooFor, kv, ai, defer }: Deps) {
   }
 
   /** precomputed: an instant brand whose run used only stored Qloo results (0 new calls). */
-  const view = (m: StoredMatch, stored: boolean) => clientSafe({ ok: true, stored, ...m,
+  const view = (m: StoredMatch, stored: boolean, confirmation: Confirmation) => clientSafe({ ok: true, stored, ...m,
     precomputed: !!instantBrand(m.brief.referenceQuery) && m.qloo.calls === m.qloo.cached,
-    run: agentRun(m, m.package, stored ? 'stored' : 'live', m.confirmed ?? { exact: true, duplicates: 1 }) });
+    run: agentRun(m, m.package, stored ? 'stored' : 'live', m.confirmed ?? { exact: true, duplicates: 1 }, confirmation) });
 
-  async function match(rawBrief: unknown, candidateId: unknown): Promise<ServiceResult & { served?: 'stored' | 'live' }> {
+  /** confirmation: how the candidate was picked, reported in the agent run (the server cannot verify a person). */
+  async function match(rawBrief: unknown, candidateId: unknown, confirmation: Confirmation = 'unknown'): Promise<ServiceResult & { served?: 'stored' | 'live' }> {
     const { brief, error } = validateBrief(rawBrief);
     if (!brief) return { status: 400, body: { ok: false, error: error! } };
     const cands = await kv.get<Candidate[]>(await resolveKey(brief.referenceQuery));
@@ -200,7 +203,7 @@ export function createService({ qloo, qlooFor, kv, ai, defer }: Deps) {
     if (!p?.length || !base) return { status: 503, body: { ok: false, error: 'Character profiles are not precomputed. Run npm run precompute.' } };
     const id = await sha(JSON.stringify({ v: SCORING_VERSION, brief, brand: picked.id }));
     const existing = await kv.get<StoredMatch>(`match:${id}`);
-    if (existing) return { status: 200, served: 'stored', body: view(await ensurePackage(existing), true) };
+    if (existing) return { status: 200, served: 'stored', body: view(await ensurePackage(existing), true, confirmation) };
     const core = await runMatch(client('match'), p, base, brief, { id: picked.id, name: picked.name });
     const confirmed = { exact: picked.exact, duplicates: cands!.filter((c) => normName(c.name) === normName(picked.name)).length };
     let pkg = buildPackage(id, core);
@@ -209,12 +212,12 @@ export function createService({ qloo, qlooFor, kv, ai, defer }: Deps) {
       const pending: StoredMatch = { ...draft, package: { ...pkg, copy: { ...pkg.copy, reason: 'ai-pending' } } };
       await kv.set(`match:${id}`, pending);
       defer((async () => { const names = await brandNamesOf(draft); await kv.set(`match:${id}`, { ...draft, package: await rewriteCopy(pkg, core.evidence, ai, names) }); })().catch(() => undefined));
-      return { status: 200, served: 'live', body: view(pending, false) };
+      return { status: 200, served: 'live', body: view(pending, false, confirmation) };
     }
     if (ai) pkg = await rewriteCopy(pkg, core.evidence, ai, await brandNamesOf(draft));
     const stored: StoredMatch = { ...draft, package: pkg };
     await kv.set(`match:${id}`, stored);
-    return { status: 200, served: 'live', body: view(stored, false) };
+    return { status: 200, served: 'live', body: view(stored, false, confirmation) };
   }
 
   async function getMatch(id: string): Promise<StoredMatch | undefined> {
@@ -320,7 +323,8 @@ export function createApp(deps: Deps) {
   app.post('/api/match', async (c) => {
     const t0 = Date.now();
     const body = await c.req.json().catch(() => ({}));
-    const r = await svc.match(body.brief, body.candidateId);
+    const confirmation: Confirmation = body.confirmation === 'person' || body.confirmation === 'auto' ? body.confirmation : 'unknown';
+    const r = await svc.match(body.brief, body.candidateId, confirmation);
     if (r.served) c.header('Server-Timing', `match;dur=${Date.now() - t0};desc="${r.served}"`);
     return c.json(r.body, r.status);
   });

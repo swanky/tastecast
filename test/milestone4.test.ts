@@ -74,7 +74,7 @@ describe('MCP endpoint', () => {
     expect(s.served).toBe('stored');
     expect(s.agent_run.steps[0].kind).toBe('plan');
     expect(s.agent_run.steps.at(-1).kind).toBe('stop');
-    expect(s.agent_run.steps.some((x: any) => x.kind === 'human')).toBe(true);
+    expect(s.agent_run.steps[1].title).toBe('Qloo entity confirmed by the calling agent');
     expect(s.agent_run.steps.filter((x: any) => x.kind === 'tool').every((x: any) => x.evidenceIds.length > 0)).toBe(true);
     const pkg: any = await client.callTool({ name: 'draft_package', arguments: { match_id: s.match_id } });
     expect(pkg.structuredContent.package.disclosure).toBe(DISCLOSURE);
