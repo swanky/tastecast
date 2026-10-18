@@ -43,6 +43,6 @@ export function quote(id: string, m: MatchCore, pkg: EndorsementPackage): Licens
     approvals: { character_operator: false, brand: false },
     disclosure: DISCLOSURE,
     qloo_evidence: [...new Set((m.ranking.find((r) => r.slug === c.slug) ?? m.ranking[0]).why.flatMap((w) => w.sourceIds))],
-    notes: ['Price is displayed for the demo and never charged. No payment request is issued.', 'Both approvals must be checked by people before any use.'],
+    notes: ['Price is displayed for the demo and never charged. No payment request is issued.', 'Both approvals must be checked by people before any use.', 'Place, brand and artist names in the package are Qloo-sourced references for mood and location, not endorsements or permissions. The soundtrack is a direction, not cleared music.'],
   };
 }

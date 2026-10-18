@@ -19,17 +19,24 @@ const WORD = /[\p{L}\p{N}][\p{L}\p{N}'’&.-]*/gu;
 const bare = (w: string) => w.replace(/[.'’-]+$/, '').replace(/['’]s$/i, '');
 const words = (s: string) => (s.match(WORD) ?? []).map(bare);
 const lower = (s: string) => s.toLowerCase();
-/** First-person or testimonial phrasing: the character is not a real user of the product. */
 /** Common words that may open a sentence; any other capitalised opener must already be in the source line. */
 const OPENERS = new Set('a an the she her it its this that these those in on at with without by for from into over under through across after before then next now here there as while when where cut open opening close closing end final start lead creative styling keep let show shot frame camera scene finish begin hold pull push move cold warm soft light wide tight slow quick each every both one two all and but so yet or'.split(' '));
+/** First-person or testimonial phrasing: the character is not a real user of the product. */
 const TESTIMONIAL = /\b(i|i'm|i've|my|me|mine|we|our)\b|\b(love[sd]?|favou?rite|obsessed|swear by|recommend)\b/i;
+/** Talent or licensing wording: a Qloo artist or brand is a taste reference, not someone booked, cleared or licensed.
+ *  ("with Bratty featured" and "featuring Yerin Baek" got past the name check because the names were in the source line.) */
+const TALENT = /\b(featur(?:e|es|ed|ing)|starring|stars|appear(?:s|ed|ing|ance)?|cameo|perform(?:s|ed|ing|ance)?|licen[cs](?:e|es|ed|ing)|sung by|guest|collab(?:oration|orating)?|endors(?:e|es|ed|ing|ement)|sponsor(?:s|ed|ing)?|with a reference to|tracks? by|music by|song by)\b/i;
+/** Wording that says the character really uses the product (FTC endorsement guides): she is styled with it, not a user. */
+const USE_CLAIM = /\b(daily|every ?day|routine|ritual|habit|go-to|staple|swears?|relies on|can't live without|uses it|her own)\b/i;
 
 /**
  * Checks one rewritten line against the template line it replaces. A line passes only if it adds no claim:
  *  - every capitalised word (a name) already appears in the original line or in the always-allowed names,
  *  - no brand named in the run's evidence appears unless the original line already named it,
  *  - every number already appears in the original line,
- *  - no first-person or testimonial wording, the disclosure survives where it was, and the length is sane.
+ *  - no first-person or testimonial wording, the disclosure survives where it was, and the length is sane,
+ *  - no talent or licensing wording ("featuring", "starring", "licensed"…) and no claim that she uses the product
+ *    ("daily", "routine"…) unless the template line already had it; a soundtrack line keeps "or similar".
  * Evidence ids are not written by the model: the line keeps exactly the ids of the template line it replaces.
  */
 export function checkLine(original: string, rewritten: string, allowedNames: string[], evidenceBrands: string[]): string | null {
@@ -39,6 +46,11 @@ export function checkLine(original: string, rewritten: string, allowedNames: str
   if (/\bev\d+\b/i.test(t)) return 'writes evidence ids itself';
   if (original.includes(DISCLOSURE) && !t.includes(DISCLOSURE)) return 'drops the disclosure';
   if (TESTIMONIAL.test(t.replace(DISCLOSURE, ''))) return 'first-person or testimonial wording';
+  const talent = t.match(TALENT)?.[0];
+  if (talent && !TALENT.test(original)) return `talent or licensing wording: ${talent}`;
+  const use = t.match(USE_CLAIM)?.[0];
+  if (use && !new RegExp(`\\b${use}\\b`, 'i').test(original)) return `says the character uses the product: ${use}`;
+  if (/\bor similar\b/i.test(original) && !/\bor similar\b/i.test(t)) return 'drops "or similar" from the soundtrack direction';
   const origWords = new Set(words(original).map(lower));
   const allowed = new Set([...origWords, ...allowedNames.flatMap(words).map(lower)]);
   const sentenceStart = new Set<number>();
@@ -80,7 +92,7 @@ export async function rewriteCopy(pkg: EndorsementPackage, evidence: Evidence[],
   const allowedNames = [pkg.character.name, pkg.brand.name, pkg.brand.product, pkg.city, 'Qloo', DISCLOSURE];
   const prompt = [
     'You are a copy editor for a disclosed AI-character ad. Rewrite each line so it reads like a professional creative brief: concrete, warm, one or two sentences.',
-    'Hard rules: keep every fact, add none. Do not add any name, brand, place, number or claim that is not in that line. Do not use first person or testimonial wording; the character is fictional and not a real user. Keep the text "' + DISCLOSURE + '" exactly where a line contains it. Do not mention evidence ids.',
+    'Hard rules: keep every fact, add none. Do not add any name, brand, place, number or claim that is not in that line. Do not use first person or testimonial wording; the character is fictional and not a real user, so never say she uses the product daily or as a routine. Artists are a soundtrack direction, not booked talent: never write featuring, starring, appears or licensed. Keep the text "' + DISCLOSURE + '" exactly where a line contains it. Do not mention evidence ids.',
     `Character: ${pkg.character.name}. Brand: ${pkg.brand.name}. Product: ${pkg.brand.product}. City: ${pkg.city}.`,
     'Return only JSON mapping each key to its rewritten text.',
     JSON.stringify(facts),

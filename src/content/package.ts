@@ -1,6 +1,6 @@
 import { CHARACTERS, DISCLOSURE } from '../domain/characters.js';
 import type { MatchCore } from '../agent/match.js';
-import { departmentStore } from './places.js';
+import { departmentStore, placeTier, shootability } from './places.js';
 
 export interface Line { text: string; sourceIds: string[] }
 export interface Shot { n: number; location: string; action: string; head: string; gaze: string; lens: string; sourceIds: string[] }
@@ -37,9 +37,9 @@ export interface CopyReport {
 }
 
 /** Bump when package building changes, so stored packages are rebuilt once from their stored match core. */
-export const COPY_VERSION = 4;
+export const COPY_VERSION = 5;
 
-/** QA-gate shot pattern: at most one look to camera, varied head angle and lens (characters/qa/image-qa-gate.md). */
+/** Shot pattern from the character image QA gate (kept in the private photography repo): at most one look to camera, varied head angle and lens. */
 const SHOT_PATTERN = [
   { head: 'three-quarter, tilted down', gaze: 'on the product in her hands', lens: '50mm, close medium' },
   { head: 'exact profile', gaze: 'on the task, not the camera', lens: '35mm, full body with the place' },
@@ -49,13 +49,22 @@ const SHOT_PATTERN = [
   { head: 'frontal', gaze: 'into the lens (the only shot that does)', lens: '28mm, environmental' },
 ];
 
-export function buildPackage(id: string, m: MatchCore): EndorsementPackage {
+/** placeKinds: Qloo place categories by place name (from the stored character profiles), for match cores stored
+ *  before the kinds were kept on the match. Rebuilding a package needs no Qloo call. */
+export function buildPackage(id: string, m: MatchCore, opts: { placeKinds?: Map<string, string[]> } = {}): EndorsementPackage {
   const top = m.ranking.find((r) => r.slug === (m.featured?.slug ?? m.ranking[0].slug)) ?? m.ranking[0];
   const c = CHARACTERS.find((x) => x.slug === top.slug)!;
-  // Re-checked here so stored match cores built before a filter change are cleaned when the package is rebuilt.
-  const late = m.local.places.filter((x) => departmentStore(x.name, m.local.city));
-  const L = { ...m.local, places: m.local.places.filter((x) => !late.includes(x)),
-    excludedPlaces: [...(m.local.excludedPlaces ?? []), ...late.map((x) => ({ name: x.name, reason: `inside or named after the department store ${departmentStore(x.name, m.local.city)}, another brand's retail space`, evidenceId: x.evidenceId }))] };
+  // Re-checked here so stored match cores built before a filter change are cleaned when the package is rebuilt:
+  // department stores by name, and hotels, bars and clubs for a non-hospitality product by Qloo kind.
+  const cat = `${m.brief.category} ${m.brief.product}`;
+  const judged = m.local.places.map((x) => {
+    const kinds = x.kinds ?? opts.placeKinds?.get(x.name);
+    const dept = departmentStore(x.name, m.local.city);
+    const v = dept ? { ok: false as const, reason: `inside or named after the department store ${dept}, another brand's retail space` } : shootability({ name: x.name, area: x.area, kinds }, [], m.local.city, cat);
+    return { x: { ...x, kinds }, v };
+  });
+  const L = { ...m.local, places: judged.filter((j) => j.v.ok).map((j) => j.x).sort((a, b) => placeTier(a) - placeTier(b)),
+    excludedPlaces: [...(m.local.excludedPlaces ?? []), ...judged.flatMap(({ x, v }) => (v.ok ? [] : [{ name: x.name, reason: v.reason, evidenceId: x.evidenceId }]))] };
   const angle = L.angles.slice(0, 3);
   const art = L.artists.slice(0, 3);
   const prod = m.brief.product || m.brief.category;
@@ -77,9 +86,9 @@ export function buildPackage(id: string, m: MatchCore): EndorsementPackage {
       ...top.why.slice(0, 3).map((w) => ({ text: w.text, sourceIds: w.sourceIds })),
     ],
     script30s: [
-      { t: '0–5s', text: `Cold open in ${placeOrAngle(0).location}: ${c.name} mid-task, ${prod} already in use.`, sourceIds: [placeOrAngle(0).src] },
-      { t: '5–15s', text: `She uses the ${prod} as part of a real routine, no hard sell; styling leans ${mood(0)?.name.toLowerCase() ?? 'everyday'}.`, sourceIds: [mood(0)?.evidenceId ?? ''] },
-      { t: '15–25s', text: `Cut to ${placeOrAngle(1).location} with ${art[0]?.name ?? 'a local track'} under it.`, sourceIds: uniq([placeOrAngle(1).src, art[0]?.evidenceId ?? '']) },
+      { t: '0–5s', text: `Cold open in ${placeOrAngle(0).location}: ${c.name} mid-task, the ${prod} styled in frame.`, sourceIds: [placeOrAngle(0).src] },
+      { t: '5–15s', text: `Styled product placement, no hard sell: the ${prod} as a prop in her scene, with no claim that she is a user; styling leans ${mood(0)?.name.toLowerCase() ?? 'everyday'}.`, sourceIds: [mood(0)?.evidenceId ?? ''] },
+      { t: '15–25s', text: `Cut to ${placeOrAngle(1).location}. Soundtrack direction: ${art[0] ? `${art[0].name} or similar` : 'a local track'}.`, sourceIds: uniq([placeOrAngle(1).src, art[0]?.evidenceId ?? '']) },
       { t: '25–30s', text: `End card: ${m.brief.brandName} with "${DISCLOSURE}" on screen for the full 5 seconds.`, sourceIds: [top.why[0].sourceIds[0]] },
     ],
     shotList: SHOT_PATTERN.map((s, i) => {
@@ -92,7 +101,7 @@ export function buildPackage(id: string, m: MatchCore): EndorsementPackage {
       { text: `Wardrobe and palette notes: ${L.angles.slice(3, 6).map((a) => a.name.toLowerCase()).join(', ') || 'keep to her signature look'}; keep her signature: ${c.signature[0].toLowerCase()}.`, sourceIds: uniq(L.angles.slice(3, 6).map((a) => a.evidenceId).concat(top.why[1].sourceIds)) },
     ],
     imagePrompt: {
-      text: `Photoreal editorial photo of ${c.name}, an original fictional AI character (${c.signature.join('; ')}), in ${placeOrAngle(0).location}, using an unbranded ${prod}. Head three-quarter tilted down, eyes on the product, not the camera. ${mood(0)?.name ?? ''} mood, natural light, no text or logos, no real person's likeness. Label: ${DISCLOSURE}.`,
+      text: `Photoreal editorial photo of ${c.name}, an original fictional AI character (${c.signature.join('; ')}), in ${placeOrAngle(0).location}, with the brief's product (${prod}) shown unbranded as a styled prop. Head three-quarter tilted down, eyes on the product, not the camera. ${mood(0)?.name ?? ''} mood, natural light, no text or logos, no real person's likeness. Label: ${DISCLOSURE}.`,
       sourceIds: uniq([placeOrAngle(0).src, mood(0)?.evidenceId ?? '']),
     },
     disclosure: DISCLOSURE,

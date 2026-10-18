@@ -3,7 +3,7 @@ import { CHARACTERS, TAG_TYPES, type CharacterDef } from '../domain/characters.j
 import type { CharacterProfile } from '../domain/profile.js';
 import { combine, cosine, fitScore, round, tagOverlap, toArray, type DemoVector } from '../domain/score.js';
 import { EvidenceLedger, type Evidence } from './evidence.js';
-import { shootability } from '../content/places.js';
+import { placeTier, shootability } from '../content/places.js';
 import { INDEX_TYPES, indexScore, reverseAffinity, tasteIndex, type Baseline, type IndexTypes, type TasteIndex } from './affinity.js';
 
 export const CHANNELS = ['instagram', 'tiktok', 'youtube', 'web', 'ooh'] as const;
@@ -47,7 +47,8 @@ export interface LocalFindings {
   angles: { name: string; evidenceId: string }[];
   artists: { name: string; evidenceId: string }[];
   brands: { name: string; evidenceId: string }[];
-  places: { name: string; area: string; evidenceId: string }[];
+  /** kinds: Qloo place categories, kept so a rebuilt package can re-run the location filter without new calls. */
+  places: { name: string; area: string; evidenceId: string; kinds?: string[] }[];
   /** Places Qloo returned that are not used as shoot locations, with the reason (other brands' stores). */
   excludedPlaces?: { name: string; reason: string; evidenceId: string }[];
 }
@@ -284,7 +285,8 @@ export async function runMatch(qloo: QlooClient, profiles: CharacterProfile[], b
 
   const placeEv = importEv(winner, 'profile:places', 'places')[0] ?? '';
   const knownBrands = [brand.name, ...brandNames, ...profiles.flatMap((p) => p.seeds.filter((s) => s.type === 'urn:entity:brand').map((s) => s.matchedName))];
-  const judged = city === wc.city ? winner.places.map((x) => ({ x, v: shootability(x, knownBrands, city) })) : [];
+  const cat = `${brief.category} ${brief.product}`;
+  const judged = city === wc.city ? winner.places.map((x) => ({ x, v: shootability(x, knownBrands, city, cat) })) : [];
 
   return {
     brief, brand, ranking, decision: ranked.decision, featured,
@@ -293,7 +295,7 @@ export async function runMatch(qloo: QlooClient, profiles: CharacterProfile[], b
       angles: angleNames.map((name) => ({ name, evidenceId: angleEv })),
       artists: artistNames.map((name) => ({ name, evidenceId: artistEv })),
       brands: brandNames.map((name) => ({ name, evidenceId: brandEv })),
-      places: judged.filter((j) => j.v.ok).map(({ x }) => ({ name: x.name, area: x.area, evidenceId: placeEv })),
+      places: judged.filter((j) => j.v.ok).map(({ x }) => ({ name: x.name, area: x.area, evidenceId: placeEv, kinds: x.kinds ?? [] })).sort((a, b) => placeTier(a) - placeTier(b)),
       excludedPlaces: judged.flatMap(({ x, v }) => (v.ok ? [] : [{ name: x.name, reason: v.reason, evidenceId: placeEv }])),
     },
     evidence: ev.items,
