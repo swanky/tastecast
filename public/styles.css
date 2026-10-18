@@ -244,6 +244,8 @@ pre { background: #1b1915; color: #ece6dc; padding: 18px; overflow: auto; font-s
 .timeline .kind { font: 600 10px/1.9 var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
 .timeline b { font: 400 19px/1.3 var(--serif); }
 .timeline p { margin: 4px 0 0; font-size: 15px; line-height: 1.5; }
+/* Grid items default to min-width:auto, so a long step or a run of evidence chips pushed the page wider than a phone. */
+.timeline li > div, .timeline p, .timeline .kind { min-width: 0; overflow-wrap: anywhere; }
 .timeline .ok { color: var(--ok); font-weight: 700; }
 .timeline .no { color: var(--warn); font-weight: 700; }
 .democards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
@@ -255,7 +257,7 @@ pre { background: #1b1915; color: #ece6dc; padding: 18px; overflow: auto; font-s
 .agents pre { background: var(--ink); color: var(--paper); padding: 16px; overflow-x: auto; font-size: 13px; line-height: 1.5; margin: 0; }
 .agents code { font-size: 14px; }
 @media (max-width: 900px) { .democards { grid-template-columns: 1fr 1fr; } .agents { grid-template-columns: 1fr; } }
-@media (max-width: 520px) { .democards { grid-template-columns: 1fr; } .timeline li { grid-template-columns: 1fr; gap: 2px; } }
+@media (max-width: 520px) { .democards { grid-template-columns: 1fr; } .timeline li { grid-template-columns: minmax(0, 1fr); gap: 2px; } .src { white-space: normal; display: inline-block; margin-top: 2px; } }
 
 /* Script time labels stay lowercase ("0–5s"), unlike other table headers. */
 table.data.times th { text-transform: none; letter-spacing: .02em; font-size: 12px; }
