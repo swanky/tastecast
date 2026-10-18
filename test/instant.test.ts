@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { createApp, S5_KEY } from '../src/app.js';
 import { cacheKey, QlooClient } from '../src/qloo/client.js';
@@ -71,12 +72,14 @@ describe('S5 panel flag', () => {
 });
 
 describe('deferred AI rewrite', () => {
-  it('a live match answers with template copy marked ai-pending, and the deferred rewrite stores the AI copy', async () => {
+  // Needs the local Qloo cache (gitignored), so it is reported as skipped in a fresh clone.
+  it.skipIf(!existsSync('./cache/profiles'))('a live match answers with template copy marked ai-pending, and the deferred rewrite stores the AI copy', async () => {
     const { createService } = await import('../src/app.js');
     const { FileKV } = await import('../src/store/file-kv.js');
-    const { existsSync, cpSync, mkdtempSync } = await import('node:fs');
-    if (!existsSync('./cache/profiles')) return; // needs the local cache (gitignored); skipped in a fresh clone
-    const dir = mkdtempSync('/tmp/tc-test-'); cpSync('./cache', dir, { recursive: true });
+    const { cpSync, mkdtempSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const dir = mkdtempSync(join(tmpdir(), 'tc-test-')); cpSync('./cache', dir, { recursive: true });
     const kv = new FileKV(dir);
     const qloo = new QlooClient({ apiKey: 'offline', kv, fetchImpl: noNet });
     const tasks: Promise<unknown>[] = [];
