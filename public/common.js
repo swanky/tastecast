@@ -29,6 +29,6 @@ export function chrome(active) {
     </div></footer>`);
 }
 
-/** Friendly panel when the public live-call allowance is used up: points to the stored demo briefs. */
+/** Friendly panel when a live call is refused (per-network guard or a Qloo 429): points to the stored demo briefs. */
 export const demoOnlyNote = (err) => `<div class="note warn"><p>${esc(err.message)}</p>
   <p style="margin-top:12px">${(err.demos || []).map((d) => `<a class="btn arrow" style="margin:4px 8px 4px 0" href="${esc(d.href)}">${esc(d.label)}</a>`).join('')}</p></div>`;

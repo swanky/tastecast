@@ -1,5 +1,5 @@
 // Milestone-2 sensitivity check. Ranking only (no context or local calls): reverse affinity 2 calls (+1 search, +1 demographics for a new brand).
-import { QlooClient, entitiesOf } from '../src/qloo/client.js';
+import { capFrom, QlooClient, entitiesOf } from '../src/qloo/client.js';
 import { FileKV } from '../src/store/file-kv.js';
 import { loadBaseline } from '../src/agent/affinity.js';
 import { rankCharacters, type Brief } from '../src/agent/match.js';
@@ -7,7 +7,7 @@ import { EvidenceLedger } from '../src/agent/evidence.js';
 import { PROFILES_KEY, type CharacterProfile } from '../src/domain/profile.js';
 
 const kv = new FileKV('./cache');
-const qloo = new QlooClient({ apiKey: process.env.QLOO_API_KEY, kv, maxCalls: Number(process.env.QLOO_MAX_CALLS ?? 300) });
+const qloo = new QlooClient({ apiKey: process.env.QLOO_API_KEY, kv, maxCalls: capFrom(process.env.QLOO_MAX_CALLS) });
 const profiles = (await kv.get<CharacterProfile[]>(PROFILES_KEY))!;
 const baseline = (await loadBaseline(kv))!;
 const tests: { id: string; ref: string; city?: string; category: string }[] = [

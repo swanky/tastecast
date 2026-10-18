@@ -86,7 +86,7 @@ Scores are relative signals, not purchase probability (see `docs/limitations.md`
 ```
 src/
   qloo/types.ts        Qloo response types used by the app (Entity, Tag, DemographicsRow, Explainability)
-  qloo/client.ts       QlooClient: GET only, X-Api-Key from env, redirect: 'manual', one retry on 429 after Retry-After, budget guard, call log;
+  qloo/client.ts       QlooClient: GET only, X-Api-Key from env, redirect: 'manual', one retry on 429 after Retry-After, optional caps, call log;
                        caching is inside the client: cacheKey(path, params) = path + sorted query, stored in KV under qloo:<key>
   store/kv.ts          KV interface; MemoryKV (tests); FileKV (Node, ./cache, gitignored); store/workers-kv.ts (Workers KV); store/ip-limit.ts (per-network daily limit)
   domain/characters.ts static character definitions (English copy, seeds by name/type, city, age bucket, disclosure)
@@ -103,7 +103,7 @@ src/
   content/places.ts    shoot-location filter (other brands' shops, department stores, hotels/bars/clubs for non-hospitality products)
   mcp.ts               MCP tools over the same service as the HTTP routes
   server.node.ts       Node entry: FileKV, serves public/, binds 127.0.0.1
-  server.worker.ts     Cloudflare Workers entry: Workers KV, budget guards, per-network limit, branded 404
+  server.worker.ts     Cloudflare Workers entry: Workers KV, per-network abuse guard, branded 404
 scripts/precompute.ts  builds the character profiles and the baseline in ./cache (gitignored)
 scripts/build-demos.ts, precompute-instant.ts, robustness.ts, seed-kv.mjs  rebuild the stored runs (see README)
 scripts/scan-public.mjs fails on key values, cache/ or private/ files, JSON with entity_id, or UUID-shaped ids
@@ -131,7 +131,7 @@ Evidence entries the client sees carry the endpoint, the parameter **names and d
 - `QLOO_API_KEY` is read only on the server (`process.env` or the Workers `env`). It never appears in responses, logs or the client bundle; the client calls `/api/*` only.
 - Raw Qloo responses and derived profiles live in `cache/`, which is gitignored. `scripts/scan-public.mjs` runs as a local pre-push hook after `npm run hooks`; `docs/ci/check.yml` is a ready GitHub Actions workflow (copy it to `.github/workflows/` to run it on every push).
 - The call log `cache/qloo-ledger.jsonl` records the timestamp, tag, path, status and latency only.
-- Budget: `QLOO_MAX_CALLS` (default 300 in `src/qloo/client.ts` and `wrangler.toml`) is enforced against the ledger; the deployed site adds a public sub-cap (`QLOO_PUBLIC_MAX_CALLS`, 40) and a per-network daily limit. The client never retries a 401 or 403.
+- Limits: there is no project-side cap. `QLOO_MAX_CALLS` and `QLOO_PUBLIC_MAX_CALLS` are optional (unset or 0 means no cap) and are not set in `wrangler.toml`. The ledger still counts every network call, and `/api/health` reports the count and the limits in force. The deployed site keeps a per-network daily abuse guard (20 live matches, 60 live searches). A Qloo 429 is retried once after Retry-After; a second 429 returns the friendly demo-briefs answer. The client never retries a 401 or 403.
 - Fictional brands only in the demo. The brand's real **reference** brand is the Qloo seed, and the UI says so.
 - Every endorsement output carries `#ad · AI-generated character`.
 

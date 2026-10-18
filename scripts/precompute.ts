@@ -1,10 +1,10 @@
-import { QlooClient } from '../src/qloo/client.js';
+import { capFrom, QlooClient } from '../src/qloo/client.js';
 import { FileKV } from '../src/store/file-kv.js';
 import { buildProfiles, PROFILES_KEY } from '../src/domain/profile.js';
 import { buildBaseline, BASELINE_KEY } from '../src/agent/affinity.js';
 
 const kv = new FileKV(process.env.TASTECAST_CACHE_DIR ?? './cache');
-const qloo = new QlooClient({ apiKey: process.env.QLOO_API_KEY, kv, maxCalls: Number(process.env.QLOO_MAX_CALLS ?? 300) });
+const qloo = new QlooClient({ apiKey: process.env.QLOO_API_KEY, kv, maxCalls: capFrom(process.env.QLOO_MAX_CALLS) });
 const before = await qloo.networkCallsUsed();
 const profiles = await buildProfiles(qloo);
 await kv.set(PROFILES_KEY, profiles);

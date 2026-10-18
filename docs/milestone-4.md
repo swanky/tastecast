@@ -66,7 +66,9 @@ Written before the code, as the plan. Results are appended at the end.
 
 ## Risks
 
-- MCP clients that judges' agents use may hit the per-IP live limits. The demo tools cost nothing, and the limits are stated in the tool descriptions.
+- MCP clients that judges' agents use may hit the per-network abuse guard. The demo tools cost nothing, and the guard is stated in the tool descriptions.
+
+**Update 2026-10-18:** the self-imposed caps (300 project, 40 public) were removed at the owner's request; the call volume is small. The per-network guard was loosened from 1 ranking and 5 searches a day to 20 and 60. The ledger still counts every call.
 - Workers AI output can drift. The checker is strict, and the template is always the fallback.
 
 ## Results (2026-10-16, deployed version 4d6a779a)

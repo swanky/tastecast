@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
 import { createApp } from './app.js';
-import { QlooClient } from './qloo/client.js';
+import { capFrom, QlooClient } from './qloo/client.js';
 import { WorkersKV, type KVNamespaceLike } from './store/workers-kv.js';
-import { hashIp, IpDailyLimit, type LimitKind } from './store/ip-limit.js';
+import { DEFAULT_IP_LIMITS, hashIp, IpDailyLimit, type LimitKind } from './store/ip-limit.js';
 import { handleMcp, mcpPreflight } from './mcp.js';
 import type { AiLike } from './content/copywriter.js';
 import { CHARACTERS } from './domain/characters.js';
@@ -12,10 +12,11 @@ import { SECURITY_HEADERS } from './headers.js';
  *  the Workers assets binding before this code runs; only /api/* and the /c/:slug page reach the worker.
  *  Data comes from TASTECAST_KV, seeded from ./cache by scripts/seed-kv.mjs, so page loads and the demo
  *  briefs are answered from stored results without new Qloo calls.
- *  Budget guards for live calls (custom briefs from the public), all enforced from KV:
- *    - total cap QLOO_MAX_CALLS (300) across the whole project ledger,
- *    - public sub-cap QLOO_PUBLIC_MAX_CALLS (40) on calls this site makes (ledger tag "public:"),
- *    - per-IP daily allowance: 1 live match and 5 live searches. */
+ *  Live calls (custom briefs from the public) have no project-side cap. Every network call is still logged in
+ *  the KV ledger for reporting. Guards:
+ *    - per-network daily abuse guard: 20 live matches and 60 live searches (src/store/ip-limit.ts),
+ *    - a Qloo 429 is retried once; a second 429 gets the friendly demo-briefs answer,
+ *    - optional caps QLOO_MAX_CALLS / QLOO_PUBLIC_MAX_CALLS (unset or 0 = no cap; not set in wrangler.toml). */
 export interface Env {
   QLOO_API_KEY?: string;
   QLOO_MAX_CALLS?: string;
@@ -37,8 +38,8 @@ export default {
       let limiter: IpDailyLimit | undefined;
       return new QlooClient({
         apiKey: env.QLOO_API_KEY, kv, logCacheHits: false,
-        maxCalls: Number(env.QLOO_MAX_CALLS ?? 300),
-        tagPrefix: path === '/mcp' ? 'public:mcp:' : 'public:', scopedMaxCalls: Number(env.QLOO_PUBLIC_MAX_CALLS ?? 40),
+        maxCalls: capFrom(env.QLOO_MAX_CALLS),
+        tagPrefix: path === '/mcp' ? 'public:mcp:' : 'public:', scopedMaxCalls: capFrom(env.QLOO_PUBLIC_MAX_CALLS),
         scopePrefix: 'public:',
         beforeNetwork: async () => {
           limiter ??= new IpDailyLimit(env.TASTECAST_KV, await ipHash, kind);
@@ -48,7 +49,7 @@ export default {
     };
     const qloo = qlooFor(path === '/api/match' ? 'match' : 'resolve');
     const waitUntil = (ctx as { waitUntil?: (p: Promise<unknown>) => void } | undefined)?.waitUntil?.bind(ctx);
-    const deps = { qloo, qlooFor, kv, ai: env.AI, defer: waitUntil, flags: { s5Panel: env.S5_PANEL === 'on' } };
+    const deps = { qloo, qlooFor, ipLimits: DEFAULT_IP_LIMITS, kv, ai: env.AI, defer: waitUntil, flags: { s5Panel: env.S5_PANEL === 'on' } };
     const root = new Hono();
     root.use('*', async (c, next) => {
       await next();

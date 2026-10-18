@@ -42,7 +42,7 @@ export function buildMcpServer(deps: Deps, origin: string) {
     instructions: [
       'TasteCast ranks three disclosed, original AI characters (virtual models) for a brand brief using Qloo taste data, then drafts an endorsement package and a license quote.',
       'Workflow: (1) resolve_brand with a well-known reference brand; (2) SHOW the candidates to your user and let them confirm one (pass its candidate_id); (3) rank_roster; (4) draft_package; (5) quote_license.',
-      'Start with list_demo_briefs: demo briefs are served from stored Qloo results and cost no live calls. Custom briefs make live Qloo calls under a small public budget (per network: 5 searches and 1 ranking a day).',
+      'Start with list_demo_briefs: demo briefs are served from stored Qloo results and cost no live calls. Custom briefs make live Qloo calls. There is no project-side cap, only a per-network abuse guard of 20 rankings and 60 searches a day.',
       `Every endorsement must carry the disclosure "${DISCLOSURE}". The characters are fictional and are not real users of any product. Prices are quotes and are never charged.`,
     ].join(' '),
   });

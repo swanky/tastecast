@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
-import { BudgetExceeded, QlooClient, QlooError } from './qloo/client.js';
+import { BudgetExceeded, QlooClient, QlooError, type BudgetReason } from './qloo/client.js';
+import { DEFAULT_IP_LIMITS } from './store/ip-limit.js';
 import type { KV } from './store/kv.js';
 import { CHARACTERS, DISCLOSURE, type CharacterDef } from './domain/characters.js';
 import { PROFILES_KEY, type CharacterProfile } from './domain/profile.js';
@@ -24,6 +25,8 @@ export interface Deps {
   defer?: (p: Promise<unknown>) => void;
   /** Feature flags. s5Panel: show the S5 "LLM only vs Qloo" panel (off until the self-rating exists). */
   flags?: { s5Panel?: boolean };
+  /** Per-network daily abuse guard in force (Workers only), reported by /api/health. */
+  ipLimits?: { match: number; resolve: number };
 }
 
 /** KV value behind the S5 panel (written by the S5 scripts, never by the site). Results stay absent until the user self-rates. */
@@ -63,9 +66,10 @@ export { DEMO_BRIEFS } from './demo-briefs.js';
 import { DEMO_BRIEFS } from './demo-briefs.js';
 export const DEMO_LINKS = DEMO_BRIEFS.map((d, i) => ({ label: d.label, href: `/brief?demo=${i}&confirm=1` }));
 const DEMO_HINT = `The ${DEMO_BRIEFS.length} demo briefs (${DEMO_BRIEFS.map((d) => d.label).join(', ')}) still run in full from stored Qloo results.`;
-export function budgetMessage(reason: 'total' | 'public' | 'ip') {
-  if (reason === 'ip') return `You have already run today's live custom brief from this network. ${DEMO_HINT} Custom briefs open again tomorrow.`;
-  return `Live Qloo lookups for custom briefs are used up on this public demo, so we can keep the Qloo hackathon budget fair. ${DEMO_HINT}`;
+export function budgetMessage(reason: BudgetReason) {
+  if (reason === 'ip') return `This network has reached today's abuse guard for live custom briefs (${DEFAULT_IP_LIMITS.match} live matches and ${DEFAULT_IP_LIMITS.resolve} live searches a day). ${DEMO_HINT} Custom briefs open again tomorrow.`;
+  if (reason === 'upstream') return `Qloo is rate-limiting live lookups right now. ${DEMO_HINT} Try the custom brief again in a minute.`;
+  return `Live Qloo lookups for custom briefs are paused on this demo. ${DEMO_HINT}`;
 }
 
 export function validateBrief(b: unknown): { brief?: Brief; error?: string } {
@@ -279,7 +283,8 @@ export function createApp(deps: Deps) {
     const p = await svc.profiles();
     let reach = 'unknown';
     try { await qloo.get('/search', { query: 'Qloo health check', types: 'urn:entity:brand', take: '1' }, 'health'); reach = 'reachable'; } catch { reach = 'unreachable'; }
-    return c.json({ ok: reach === 'reachable', qloo: reach, profiles: p?.length ?? 0, callsUsed: await qloo.networkCallsUsed() }, reach === 'reachable' ? 200 : 503);
+    return c.json({ ok: reach === 'reachable', qloo: reach, profiles: p?.length ?? 0, callsUsed: await qloo.networkCallsUsed(),
+      limits: { projectCap: qloo.caps.total ?? 'none', publicCap: qloo.caps.public ?? 'none', perNetworkPerDay: deps.ipLimits ? { liveMatches: deps.ipLimits.match, liveSearches: deps.ipLimits.resolve } : 'none' } }, reach === 'reachable' ? 200 : 503);
   });
 
   app.get('/api/characters', async (c) => {

@@ -8,7 +8,15 @@ export class QlooError extends Error {
   constructor(message: string, public status: number) { super(message); }
 }
 export class BudgetExceeded extends Error {
-  constructor(message: string, public reason: 'total' | 'public' | 'ip' = 'total') { super(message); }
+  constructor(message: string, public reason: BudgetReason = 'total') { super(message); }
+}
+/** total/public: optional project caps (off by default); ip: per-network abuse guard; upstream: Qloo itself answered 429. */
+export type BudgetReason = 'total' | 'public' | 'ip' | 'upstream';
+
+/** Optional call cap from an env string: unset, empty, 0 or not a positive number means no cap. */
+export function capFrom(v: string | undefined): number | undefined {
+  const n = Number(v);
+  return v !== undefined && v.trim() !== '' && Number.isFinite(n) && n > 0 ? Math.floor(n) : undefined;
 }
 
 export function cacheKey(path: string, params: QlooParams): string {
@@ -19,6 +27,7 @@ export function cacheKey(path: string, params: QlooParams): string {
 export interface QlooClientOptions {
   apiKey: string | undefined;
   kv: KV;
+  /** Optional hard cap on network calls in the ledger. Unset or 0 means no cap (the default). */
   maxCalls?: number;
   fetchImpl?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
@@ -27,7 +36,7 @@ export interface QlooClientOptions {
   logCacheHits?: boolean;
   /** Prepended to every ledger tag, e.g. "public:" on the deployed site. */
   tagPrefix?: string;
-  /** Hard cap on network calls whose ledger tag starts with scopePrefix (default tagPrefix): the public sub-budget. */
+  /** Optional cap on network calls whose ledger tag starts with scopePrefix (default tagPrefix). Unset or 0 means no cap. */
   scopedMaxCalls?: number;
   /** Ledger tag prefix counted by scopedMaxCalls. Lets "public:mcp:" calls share the "public:" budget. */
   scopePrefix?: string;
@@ -35,21 +44,27 @@ export interface QlooClientOptions {
   beforeNetwork?: () => Promise<void>;
 }
 
-/** Server-side Qloo client. GET only, key in X-Api-Key, no redirects, one 429 retry, cached, budgeted, logged. */
+/** Server-side Qloo client. GET only, key in X-Api-Key, no redirects, one 429 retry, cached, logged; caps are optional. */
 export class QlooClient {
   private fetchImpl: typeof fetch;
   private sleep: (ms: number) => Promise<void>;
   private now: () => number;
-  private maxCalls: number;
+  private maxCalls: number | undefined;
   constructor(private o: QlooClientOptions) {
     // Wrapped: calling a detached global fetch throws "Illegal invocation" on Workers.
     this.fetchImpl = o.fetchImpl ?? ((input, init) => fetch(input, init));
     this.sleep = o.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
     this.now = o.now ?? Date.now;
-    this.maxCalls = o.maxCalls ?? 300;
+    this.maxCalls = o.maxCalls && o.maxCalls > 0 ? o.maxCalls : undefined;
   }
 
   get hasKey() { return Boolean(this.o.apiKey); }
+
+  /** The caps in force, null meaning none. */
+  get caps(): { total: number | null; public: number | null } {
+    const s = this.o.scopedMaxCalls;
+    return { total: this.maxCalls ?? null, public: s && s > 0 ? s : null };
+  }
 
   async networkCallsUsed(): Promise<number> {
     return (await this.usage()).total;
@@ -70,15 +85,19 @@ export class QlooClient {
       return { data: hit, cached: true };
     }
     if (!this.o.apiKey) throw new QlooError('QLOO_API_KEY not set', 503);
-    const used = await this.usage();
-    if (used.total >= this.maxCalls) throw new BudgetExceeded(`Qloo call budget ${this.maxCalls} reached`, 'total');
-    if (this.o.scopedMaxCalls !== undefined && used.scoped >= this.o.scopedMaxCalls) throw new BudgetExceeded(`Public Qloo allowance of ${this.o.scopedMaxCalls} calls used`, 'public');
+    const { total, public: scoped } = this.caps;
+    if (total !== null || scoped !== null) {
+      const used = await this.usage();
+      if (total !== null && used.total >= total) throw new BudgetExceeded(`Qloo call cap ${total} reached`, 'total');
+      if (scoped !== null && used.scoped >= scoped) throw new BudgetExceeded(`Public Qloo cap of ${scoped} calls used`, 'public');
+    }
     if (this.o.beforeNetwork) await this.o.beforeNetwork();
     let res = await this.fetchOnce(key, tag, path);
     if (res.status === 429) {
       const wait = Math.min(Number(res.headers.get('retry-after') ?? '1') || 1, 10) * 1000;
       await this.sleep(wait);
       res = await this.fetchOnce(key, tag, path);
+      if (res.status === 429) throw new BudgetExceeded('Qloo rate limit (429) after one retry', 'upstream');
     }
     if (res.status >= 300 && res.status < 400) throw new QlooError('Qloo redirect blocked', 502);
     const raw = await res.text();

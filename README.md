@@ -25,7 +25,7 @@ What kind of agent this is: a deterministic, auditable loop exposed as MCP tools
 | North Kiln, stoneware tea set | Le Creuset | Qloo decided: Ingrid Brekkhus (lead 0.380) |
 | Loma Coffee Gear, pour-over dripper | Blue Bottle Coffee | Close call: Itzel or Ingrid (lead 0.104 clears 0.08, but the two index measures disagree) |
 
-Direct links: `/brief?demo=0&confirm=1` … `demo=3`. The 4 demo briefs and the 11 instant reference brands below are served from **stored Qloo results**: they never run out and cost no live calls. Other reference brands make live Qloo calls, rate-limited to protect the shared hackathon quota: per network, 5 searches and 1 ranking a day, inside a public allowance of 40 calls and a project cap of 300. When a limit is reached, the site says so and links back to the demos.
+Direct links: `/brief?demo=0&confirm=1` … `demo=3`. The 4 demo briefs and the 11 instant reference brands below are served from **stored Qloo results**: they return at once and never call Qloo. Other reference brands make live Qloo calls. There is no project-side cap on them, only a generous abuse guard of 20 live matches and 60 live searches per network a day, so a judging team behind one office network is not blocked. If the guard is reached, or Qloo itself answers 429 twice in a row, the site says so and links back to the demos.
 
 **Instant reference brands.** Eleven well-known brands were run through Qloo ahead of time and stored, so a custom brief that uses one of them as the reference brand returns at once and makes no new Qloo calls. The brief page lists them, and the result carries a "Precomputed" note. Typed variants work (`nike`, `Tajin`, `Stüssy`, `Blue Bottle`). Leave the campaign city empty: a city adds an in-city check that was not precomputed. Verdicts below are for a generic brief and were not tuned.
 
@@ -111,12 +111,12 @@ npm run robustness          # character-page "fits": up to 6 calls per test brie
 npm run seed-kv             # 0 calls: writes out/kv-seed.json from ./cache for `wrangler kv bulk put` (gitignored)
 ```
 
-The counts are worked out from the call pattern on an empty cache; every script prints the network calls it made. Set `QLOO_MAX_CALLS` to (calls used + allowance) for a hard stop. Without a key the server still starts and Qloo-backed routes return a plain 503. Deploying to Workers: create a KV namespace, put its id in `wrangler.toml`, `wrangler secret put QLOO_API_KEY`, `npm run seed-kv` and bulk-put it, then `npm run deploy`.
+The counts are worked out from the call pattern on an empty cache; every script prints the network calls it made. There is no cap by default. Set `QLOO_MAX_CALLS` to (calls used + allowance) if you want a hard stop for a script run; unset or 0 means no cap. Without a key the server still starts and Qloo-backed routes return a plain 503. Deploying to Workers: create a KV namespace, put its id in `wrangler.toml`, `wrangler secret put QLOO_API_KEY`, `npm run seed-kv` and bulk-put it, then `npm run deploy`.
 
 Checks:
 
 ```bash
-npm test             # 77 tests; from a clean clone 75 run and 2 are skipped (they need a local Qloo cache). No network.
+npm test             # 81 tests; from a clean clone 79 run and 2 are skipped (they need a local Qloo cache). No network.
 npm run typecheck
 npm run scan-public  # fails on cache/, .env, the key, raw Qloo JSON or UUID-shaped ids (any case, with or without dashes)
 npm run hooks        # optional: run scan-public before every git push
@@ -129,6 +129,6 @@ The git history was squashed before the repo was made public; the milestone docs
 ## Data and disclosure rules
 
 - The Qloo key lives only in the server environment. Clients never see entity IDs; candidates use opaque tokens.
-- Every live Qloo call is logged (timestamp, tag, path, status, latency) and counted against a total cap and a public sub-cap.
+- Every live Qloo call is logged (timestamp, tag, path, status, latency) and counted for reporting. There is no project-side cap; the site keeps a per-network abuse guard.
 - License quotes are never charged and both approvals stay false until people sign off.
 - The characters are AI-generated, labelled as such on every page and in every package.

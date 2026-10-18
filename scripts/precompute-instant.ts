@@ -2,13 +2,13 @@
 // the same service the site uses: resolve, then the full match for a generic brief (its verdict is the badge).
 // Budget: QLOO_MAX_CALLS caps the whole ledger, so set it to (current + allowance) for a hard stop.
 // Dry run first: npx tsx scripts/instant-cost.ts <names> counts the calls each brand needs from the cache.
-import { QlooClient } from '../src/qloo/client.js';
+import { capFrom, QlooClient } from '../src/qloo/client.js';
 import { FileKV } from '../src/store/file-kv.js';
 import { createService, instantBrief } from '../src/app.js';
 import { INSTANT_BRANDS } from '../src/instant-brands.js';
 
 const kv = new FileKV(process.env.TASTECAST_CACHE_DIR ?? './cache');
-const qloo = new QlooClient({ apiKey: process.env.QLOO_API_KEY, kv, maxCalls: Number(process.env.QLOO_MAX_CALLS ?? 300) });
+const qloo = new QlooClient({ apiKey: process.env.QLOO_API_KEY, kv, maxCalls: capFrom(process.env.QLOO_MAX_CALLS) });
 const svc = createService({ qloo, kv });
 const before = await qloo.networkCallsUsed();
 for (const b of INSTANT_BRANDS) {

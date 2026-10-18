@@ -11,8 +11,7 @@ directory = "./public"
 binding = "ASSETS"
 
 [vars]
-QLOO_MAX_CALLS = "300"
-QLOO_PUBLIC_MAX_CALLS = "40"
+# No project-side Qloo cap. QLOO_MAX_CALLS / QLOO_PUBLIC_MAX_CALLS are optional (unset or 0 = no cap).
 # S5 "LLM only vs Qloo" panel. Stays "off" until the self-rating exists; see docs/limitations.md.
 S5_PANEL = "off"
 

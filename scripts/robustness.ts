@@ -1,5 +1,5 @@
 // Milestone-3 robustness run. Ranking only (no context or local calls). For each brief: search 1 + demographics 1 + reverse 2–4.
-import { QlooClient, entitiesOf } from '../src/qloo/client.js';
+import { capFrom, QlooClient, entitiesOf } from '../src/qloo/client.js';
 import { FileKV } from '../src/store/file-kv.js';
 import { CORE_TYPES, FULL_TYPES, loadBaseline } from '../src/agent/affinity.js';
 import { rankCharacters, type Brief } from '../src/agent/match.js';
@@ -7,7 +7,7 @@ import { EvidenceLedger } from '../src/agent/evidence.js';
 import { PROFILES_KEY, type CharacterProfile } from '../src/domain/profile.js';
 
 const kv = new FileKV('./cache');
-const qloo = new QlooClient({ apiKey: process.env.QLOO_API_KEY, kv, maxCalls: Number(process.env.QLOO_MAX_CALLS ?? 300) });
+const qloo = new QlooClient({ apiKey: process.env.QLOO_API_KEY, kv, maxCalls: capFrom(process.env.QLOO_MAX_CALLS) });
 const profiles = (await kv.get<CharacterProfile[]>(PROFILES_KEY))!;
 const baseline = (await loadBaseline(kv))!;
 const S = (slug: string) => slug.split('-')[0];
