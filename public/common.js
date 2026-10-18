@@ -1,9 +1,25 @@
 export const $ = (s, el = document) => el.querySelector(s);
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-export const api = async (path, body) => {
-  const r = await fetch(path, body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {});
-  const j = await r.json().catch(() => ({ ok: false, error: `HTTP ${r.status}` }));
-  if (!r.ok || j.ok === false) { const e = new Error(j.error || `HTTP ${r.status}`); e.demoOnly = Boolean(j.demoOnly); e.demos = j.demos || []; throw e; }
+/** JSON request with a timeout and an optional abort signal. Errors carry kind: 'abort' (a newer run replaced this
+ *  one), 'timeout', 'network', 'http' (non-2xx or ok:false; status set) or 'parse' (the body was not JSON). */
+export const api = async (path, body, { signal, timeout = 30000 } = {}) => {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(new DOMException('timeout', 'TimeoutError')), timeout);
+  const onAbort = () => ctrl.abort(new DOMException('aborted', 'AbortError'));
+  if (signal) { if (signal.aborted) onAbort(); else signal.addEventListener('abort', onAbort, { once: true }); }
+  const fail = (kind, message, extra = {}) => Object.assign(new Error(message), { kind, ...extra });
+  let r;
+  try {
+    r = await fetch(path, { ...(body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {}), signal: ctrl.signal });
+  } catch (e) {
+    const reason = ctrl.signal.reason;
+    if (reason?.name === 'TimeoutError') throw fail('timeout', `the request took longer than ${Math.round(timeout / 1000)} s`);
+    if (reason?.name === 'AbortError') throw fail('abort', 'replaced by a newer request');
+    throw fail('network', 'network error');
+  } finally { clearTimeout(timer); signal?.removeEventListener('abort', onAbort); }
+  let j;
+  try { j = await r.json(); } catch { throw fail(r.ok ? 'parse' : 'http', r.ok ? 'the server sent a response that could not be read' : `HTTP ${r.status}`, { status: r.status }); }
+  if (!r.ok || j.ok === false) throw fail('http', j.error || `HTTP ${r.status}`, { status: r.status, demoOnly: Boolean(j.demoOnly), demos: j.demos || [] });
   return j;
 };
 export const DISCLOSURE = '#ad · AI-generated character';

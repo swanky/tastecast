@@ -19,6 +19,6 @@ for (const d of DEMO_BRIEFS) {
   const b = m.body as any;
   if (m.status !== 200) { console.log(`${d.label}: ${m.status} ${b.error}`); continue; }
   const dec = b.decision;
-  console.log(`${d.label.padEnd(20)} ref ${d.brief.referenceQuery.padEnd(18)} ${dec.level === 'clear' ? 'QLOO DECIDED' : 'CLOSE CALL  '} ${b.ranking[0].name.padEnd(16)} lead ${dec.margin} (z ${dec.indexLeaderZ}, lift ${dec.indexLeaderLift}) expected ${d.expect} | ranking ${b.ranking.map((x: any) => `${x.slug.split('-')[0]} ${x.score}`).join(', ')} | excluded places ${b.package.excludedPlaces.map((x: any) => x.name).join('; ') || '-'} | new calls ${(await qloo.networkCallsUsed()) - t} | id ${b.id}`);
+  console.log(`${d.label.padEnd(20)} ref ${d.brief.referenceQuery.padEnd(18)} ${dec.level === 'clear' ? 'CLEAR FIT   ' : 'CLOSE CALL  '} ${b.ranking[0].name.padEnd(16)} lead ${dec.margin} (z ${dec.indexLeaderZ}, lift ${dec.indexLeaderLift}) expected ${d.expect} | ranking ${b.ranking.map((x: any) => `${x.slug.split('-')[0]} ${x.score}`).join(', ')} | excluded places ${b.package.excludedPlaces.map((x: any) => x.name).join('; ') || '-'} | new calls ${(await qloo.networkCallsUsed()) - t} | id ${b.id}`);
 }
 console.log(`Qloo network calls this run: ${(await qloo.networkCallsUsed()) - before}; ledger total ${await qloo.networkCallsUsed()}`);

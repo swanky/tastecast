@@ -15,6 +15,12 @@ export interface LicenseQuote {
   approvals: { character_operator: false; brand: false };
   disclosure: string;
   qloo_evidence: string[];
+  /** How the character was cast for this quote: the clear-fit leader, the user's choice, a preview of a close call, or a request. */
+  casting: { status: EndorsementPackage['status']['kind']; label: string };
+  /** The quote covers the licence to use the character only. Shooting, generation and post-production are not included. */
+  production_included: false;
+  /** Plain-language summary for the result page. */
+  summary: string[];
   notes: string[];
 }
 
@@ -42,7 +48,16 @@ export function quote(id: string, m: MatchCore, pkg: EndorsementPackage): Licens
     },
     approvals: { character_operator: false, brand: false },
     disclosure: DISCLOSURE,
+    casting: { status: pkg.status.kind, label: pkg.status.label },
+    production_included: false,
+    summary: [
+      `Licence for ${c.name} (${c.tier} tier) to appear in ${m.brief.brandName}'s sponsored creative for the ${pkg.brand.product}.`,
+      `Channels: ${m.brief.channels.join(', ')}. Term: ${m.brief.durationMonths} month${m.brief.durationMonths === 1 ? '' : 's'} from signature.`,
+      `Indicative fee: USD ${amount.toLocaleString('en-US')}, for the character licence only. Production (shoot, image generation, edit) is not included.`,
+      pkg.status.kind === 'preview' ? 'Casting: preview for a close call; choose a character to cast the case.' : `Casting: ${pkg.status.label.toLowerCase()}.`,
+      'Nothing is charged. The character operator and the brand still have to approve before any use.',
+    ],
     qloo_evidence: [...new Set((m.ranking.find((r) => r.slug === c.slug) ?? m.ranking[0]).why.flatMap((w) => w.sourceIds))],
-    notes: ['Price is displayed for the demo and never charged. No payment request is issued.', 'Both approvals must be checked by people before any use.', 'Place, brand and artist names in the package are Qloo-sourced references for mood and location, not endorsements or permissions. The soundtrack is a direction, not cleared music.'],
+    notes: ['Price is displayed for the demo and never charged. No payment request is issued.', 'Both approvals are given by people outside TasteCast (the character operator and the brand) before any use; this demo records neither.', 'Place, brand and artist names in the package are Qloo-sourced references for mood and location, not endorsements or permissions. The soundtrack is a direction, not cleared music.'],
   };
 }

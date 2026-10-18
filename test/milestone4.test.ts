@@ -31,11 +31,11 @@ async function mcpClient(deps: Parameters<typeof handleMcp>[1]) {
 }
 
 describe('MCP endpoint', () => {
-  it('initializes, lists the five tools, and resolves with labelled duplicates and no UUIDs', async () => {
+  it('initializes, lists the six tools, and resolves with labelled duplicates and no UUIDs', async () => {
     const kv = new MemoryKV();
     const client = await mcpClient({ qloo: new QlooClient({ apiKey: 'k', kv, fetchImpl: fakeSearch }), kv });
     const tools = (await client.listTools()).tools.map((t) => t.name).sort();
-    expect(tools).toEqual(['draft_package', 'list_demo_briefs', 'quote_license', 'rank_roster', 'resolve_brand']);
+    expect(tools).toEqual(['choose_character', 'draft_package', 'list_demo_briefs', 'quote_license', 'rank_roster', 'resolve_brand']);
     const r: any = await client.callTool({ name: 'resolve_brand', arguments: { query: 'Le Creuset' } });
     expect(r.isError).toBeFalsy();
     const cands = r.structuredContent.candidates;
@@ -123,14 +123,14 @@ describe('copy checker', () => {
   });
   it('falls back to the template when the AI fails, and keeps evidence ids', async () => {
     const pkg: any = { character: { name: 'Ari Tseng' }, brand: { name: 'Nokdu Lab', product: 'toner' }, city: 'Taipei',
-      angle: [{ text: orig, sourceIds: ['ev1'] }], script30s: [0, 1, 2, 3].map((i) => ({ t: `${i}`, text: `Line ${i}.`, sourceIds: [`ev${i + 2}`] })) };
+      concept: { text: orig, sourceIds: ['ev1'] }, script30s: [0, 1, 2, 3].map((i) => ({ t: `${i}`, text: `Line ${i}.`, sourceIds: [`ev${i + 2}`] })) };
     const broken = { run: async () => { throw new Error('down'); } };
     const out = await rewriteCopy(pkg, [], broken, []);
     expect(out.copy?.mode).toBe('template');
-    expect(out.angle[0]).toEqual(pkg.angle[0]);
-    const liar = { run: async () => ({ response: { 'angle.0': 'Matcha and linen, loved by Zendaya.', 'script.0': 'Line 0, slower.' } }) };
+    expect(out.concept).toEqual(pkg.concept);
+    const liar = { run: async () => ({ response: { concept: 'Matcha and linen, loved by Zendaya.', 'script.0': 'Line 0, slower.' } }) };
     const out2 = await rewriteCopy(pkg, [], liar, []);
-    expect(out2.angle[0].text).toBe(orig);
+    expect(out2.concept.text).toBe(orig);
     expect(out2.script30s[0].sourceIds).toEqual(['ev2']);
   });
 });

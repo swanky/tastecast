@@ -37,7 +37,18 @@
           </fieldset>
           <label>License length <select name="durationMonths"><option value="1">1 month</option><option value="3" selected>3 months</option><option value="6">6 months</option><option value="12">12 months</option></select></label>
           <label>Campaign city <input name="city" placeholder="Optional. Adds an in-city check, no weight"></label>
-          <div class="actions"><button class="btn arrow" type="submit">Find the reference brand on Qloo</button><p class="err" id="brief-err" role="alert"></p></div>
+          <details class="more" id="more">
+            <summary>Campaign details <span class="muted">· optional: objective, audience, key message, facts, CTA</span></summary>
+            <p class="small muted" id="example-note" hidden>Example data: in this demo brief the objective, audience, key message, facts and CTA are synthetic, for illustration only.</p>
+            <label>Objective <select name="objective"><option value="">Not set (the script assumes awareness)</option><option value="awareness">Awareness</option><option value="consideration">Consideration</option><option value="launch">Launch</option><option value="conversion">Conversion</option></select></label>
+            <label>Target audience <input name="audience" maxlength="160" placeholder="e.g. first-time home cooks in their twenties"></label>
+            <label>Target age <select name="audienceAge"><option value="">Not set</option><option value="24_and_younger">24 and under</option><option value="25_to_29">25–29</option><option value="30_to_34">30–34</option><option value="35_to_44">35–44</option><option value="45_to_54">45–54</option><option value="55_and_older">55 and over</option></select><small>Only used to flag a character whose taste skews away from it. Not sent to Qloo.</small></label>
+            <label>Key message <input name="keyMessage" maxlength="160" placeholder="One sentence the ad must say"></label>
+            <label>Approved product facts <textarea name="facts" rows="3" placeholder="One per line, as approved by the brand"></textarea><small>Left blank, the package shows "to be supplied". TasteCast never invents product claims.</small></label>
+            <label>Call to action <input name="cta" maxlength="80" placeholder="e.g. Shop the launch at loma.example"></label>
+          </details>
+          <div id="confirmed-note" hidden></div>
+          <div class="actions"><button class="btn arrow" type="submit" id="find">Find the reference brand on Qloo</button><p class="err" id="brief-err" role="alert"></p></div>
         </form>
       </div>
       <aside>
@@ -53,22 +64,35 @@
       <div id="confirm"></div>
     </section>
 
-    <section id="result-sec" hidden>
-      <div class="section-head"><span class="num">03</span><h2>Ranked characters</h2></div>
+    <section id="result-sec" hidden aria-live="polite">
+      <div class="section-head" id="rec-sec"><span class="num">03</span><h2>Recommendation</h2></div>
       <div id="decision"></div>
+      <div class="section-head" id="why-sec"><span class="num">04</span><h2>Why this fit</h2></div>
       <div id="ranking" class="ranking"></div>
-      <div class="section-head"><span class="num">04</span><h2>Agent run</h2></div>
-      <div id="agent-run"></div>
-      <div class="section-head"><span class="num">05</span><h2 id="pkg-title">Endorsement package</h2></div>
+      <div class="section-head" id="choice-sec"><span class="num">05</span><h2>Character choice</h2></div>
+      <div id="choice"></div>
+      <div class="section-head" id="campaign-sec"><span class="num">06</span><h2 id="pkg-title">Campaign</h2></div>
       <div id="package"></div>
       <section id="s5-sec" hidden>
-        <div class="section-head"><span class="num">05b</span><h2>Without Qloo <span class="muted" style="font-size:.55em">· same brief, LLM only</span></h2></div>
+        <div class="section-head"><span class="num">06b</span><h2>Without Qloo <span class="muted" style="font-size:.55em">· same brief, LLM only</span></h2></div>
         <div id="s5"></div>
       </section>
-      <div class="section-head"><span class="num">06</span><h2>License quote <span class="muted" style="font-size:.55em">· shown, never charged</span></h2></div>
+      <div class="section-head" id="export-sec"><span class="num">07</span><h2>Export and next step</h2></div>
+      <div id="export"></div>
       <div id="license"></div>
-      <div class="section-head"><span class="num">07</span><h2>Evidence</h2></div>
-      <div id="evidence" class="evidence"></div>
+      <details class="tech" id="tech">
+        <summary><span class="num">08</span> Technical details <span class="muted">· agent run, method, evidence, copy checker, licence JSON</span></summary>
+        <h3 id="agent-run-h">Agent run</h3>
+        <div id="agent-run"></div>
+        <h3 id="methods">How the score works</h3>
+        <div id="method"></div>
+        <h3>Copy checker</h3>
+        <div id="checker"></div>
+        <h3>Licence quote JSON</h3>
+        <div id="license-json"></div>
+        <h3>Evidence</h3>
+        <div id="evidence" class="evidence"></div>
+      </details>
     </section>
   </main>
   <script type="module" src="/brief.js"></script>

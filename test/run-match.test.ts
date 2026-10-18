@@ -55,7 +55,7 @@ const brief = { brandName: 'Test Snacks Co.', referenceQuery: BRAND.name, catego
 const client = (fetchImpl: typeof fetch) => new QlooClient({ apiKey: 'test-key-not-real', kv: new MemoryKV(), fetchImpl, sleep: async () => {} });
 
 describe('runMatch end to end with a fake Qloo', () => {
-  it('a clear lead: 12 calls, 19 evidence entries, 13 agent steps, "Qloo decided"', async () => {
+  it('a clear lead: 12 calls, 19 evidence entries, 13 agent steps, "Clear fit"', async () => {
     const ps = profiles(); const urls: string[] = [];
     const aff = { 'itzel-robles': 0.95, 'ari-tseng': 0.8, 'ingrid-brekkhus': 0.78 };
     const m = await runMatch(client(fakeQloo(aff, urls)), ps, baseline(ps, { 'itzel-robles': 0.05, 'ari-tseng': 0.05, 'ingrid-brekkhus': 0.05 }), brief, BRAND);
@@ -70,7 +70,7 @@ describe('runMatch end to end with a fake Qloo', () => {
     const run = agentRun(m, pkg, 'live', { exact: true, duplicates: 1 }, 'person');
     expect(run.steps).toHaveLength(13);
     expect(run.steps.map((s) => s.kind)).toEqual(['plan', 'human', 'tool', 'tool', 'tool', 'tool', 'tool', 'check', 'check', 'check', 'check', 'tool', 'stop']);
-    expect(run.steps.find((s) => s.title === 'Verdict')!.detail).toBe('Qloo decided: Itzel Robles.');
+    expect(run.steps.find((s) => s.title === 'Verdict')!.detail).toBe('Clear fit, based on Qloo data: Itzel Robles.');
     expect(run.steps.filter((s) => s.kind === 'tool').every((s) => s.evidenceIds.length > 0)).toBe(true);
   });
 

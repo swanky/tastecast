@@ -1,4 +1,5 @@
 import { demographicsOf, entitiesOf, tagsOf, type QlooClient } from '../qloo/client.js';
+import type { AgeBucket } from '../qloo/types.js';
 import { CHARACTERS, TAG_TYPES, type CharacterDef } from '../domain/characters.js';
 import type { CharacterProfile } from '../domain/profile.js';
 import { combine, cosine, fitScore, round, tagOverlap, toArray, type DemoVector } from '../domain/score.js';
@@ -19,7 +20,23 @@ export interface Brief {
   city?: string;
   /** Character requested from a character page. All three are still ranked; the package is built for this one. */
   character?: string;
+  /** Optional creative inputs. They never change the ranking; they shape the script and the export. Missing items are
+   *  listed as "to be supplied" in the package and are never invented. */
+  objective?: Objective;
+  /** Who the campaign is for, in the user's words. */
+  audience?: string;
+  /** Target age bucket, when the campaign has one. Used only to say whether a character's taste skew conflicts with it. */
+  audienceAge?: AgeBucket;
+  keyMessage?: string;
+  /** Approved product facts, as the brand states them. TasteCast quotes them and adds none. */
+  facts?: string[];
+  cta?: string;
+  /** True when the brief data is a synthetic example (the demo briefs for fictional brands). */
+  example?: boolean;
 }
+
+export const OBJECTIVES = ['awareness', 'consideration', 'launch', 'conversion'] as const;
+export type Objective = (typeof OBJECTIVES)[number];
 
 export interface Candidate { id: string; name: string; disambiguation: string; popularity: number | null; exact: boolean }
 
@@ -58,10 +75,15 @@ export interface MatchCore {
   brand: { id: string; name: string };
   ranking: RankedCharacter[];
   decision: Decision;
-  featured: { slug: string; requested: boolean; rank: number; note: string };
+  /** The character the package is built for. requested: asked for on a character page before the run.
+   *  chosen: picked by the user on the result page after the ranking (see StoredMatch.choice). */
+  featured: { slug: string; requested: boolean; rank: number; note: string; chosen?: boolean };
   local: LocalFindings;
   evidence: Evidence[];
   qloo: { calls: number; cached: number };
+  /** Set when the user cast a character on the result page: the package and quote are rebuilt for her, the ranking,
+   *  decision, brief and confirmed entity are the root run's. from: the root match id. qloo: calls made for the casting. */
+  choice?: { slug: string; by: 'user'; from: string; recommended: string; qloo: { calls: number; cached: number } };
 }
 
 const char = (slug: string) => CHARACTERS.find((c) => c.slug === slug)!;
@@ -88,7 +110,8 @@ export interface Decision {
   reason?: 'decided' | 'lead-below-threshold' | 'measures-disagree' | 'index-disagrees' | 'no-data' | 'baseline-brand';
 }
 
-/** Success threshold for "Qloo decided": winner leads by at least this much on the combined score. Stated before the milestone-2 run. */
+/** Threshold for a "clear fit": the leader leads by at least this much on the 0–1 fit score (8 fit-score points).
+ *  A TasteCast heuristic, stated before the milestone-2 run; not a Qloo standard or a significance test. */
 export const CLEAR_MARGIN = 0.08;
 
 export interface RankResult { ranking: RankedCharacter[]; decision: Decision; calls: number; cached: number }
@@ -191,7 +214,7 @@ export async function rankCharacters(qloo: QlooClient, profiles: CharacterProfil
         : `In ${city} (context, no weight): mean affinity of ${c.name}'s seeds among ${brand.name} fans there is ${round(cm.mean, 3)}, ${ordinal(cityMeans.indexOf(cm) + 1)} of ${cityMeans.length}.`, sourceIds: cityEv });
     }
     if (idx.covered === 0) why.unshift({ text: `Qloo returned no affinity for ${c.name}'s seeds among ${brand.name} fans, so her taste index is neutral (0σ), not evidence of fit.`, sourceIds: revEv });
-    if (p.drift.flagged) why.push({ text: `Drift Check: ${p.drift.message}`, sourceIds: pDemo });
+    if (p.drift.flagged) why.push({ text: `Audience insight: ${p.drift.message}`, sourceIds: pDemo });
     ranking.push({ slug: p.slug, name: c.name, city: c.city, score: combine(parts), parts, index: idx, sharedTags: sharedNames, fitRank, fitCandidates: fitN, topSeed, drift: p.drift, why });
   }
   ranking.sort((a, b) => b.score - a.score);
@@ -228,7 +251,7 @@ export function decide(ranking: RankedCharacter[]): Decision {
     return { slug, text: `${nm(slug)}: taste index ${r.parts.indexZ >= 0 ? '+' : ''}${r.parts.indexZ}σ, raw lift ${r.parts.indexLift >= 0 ? '+' : ''}${r.parts.indexLift}, audience similarity ${sign(r.parts.cosine)}${pros.length ? ` (${pros.join('; ')})` : ''}.` };
   });
   const text = clear
-    ? `Qloo decided: ${nm(w)} leads by ${margin} (threshold ${CLEAR_MARGIN}) and the taste index agrees under both measures.`
+    ? `Clear fit: ${nm(w)} leads by ${margin} (threshold ${CLEAR_MARGIN}) and the taste index agrees under both measures.`
     : `Close call. ${nm(w)} leads by ${margin}${margin < CLEAR_MARGIN ? `, below the ${CLEAR_MARGIN} needed` : `, which clears ${CLEAR_MARGIN}, but that is not enough on its own`}${zl !== ll ? `: the taste index picks ${nm(zl)} by spread-adjusted score and ${nm(ll)} by raw lift` : zl !== w ? `: the taste index alone picks ${nm(zl)}` : ''}. Treat ${[w, ...alternatives].map(nm).join(' and ')} as viable and choose on the tradeoffs below.`;
   const reason: Decision['reason'] = clear ? 'decided' : noData ? 'no-data' : margin < CLEAR_MARGIN ? 'lead-below-threshold' : zl !== ll ? 'measures-disagree' : 'index-disagrees';
   return { reason, level: clear ? 'clear' : 'close', margin, threshold: CLEAR_MARGIN, indexLeaderZ: zl, indexLeaderLift: ll, alternatives, tradeoffs, text: noData ? text + ' Qloo returned no taste-index data for one of the top two.' : text };
@@ -241,19 +264,7 @@ export async function runMatch(qloo: QlooClient, profiles: CharacterProfile[], b
   const ev = new EvidenceLedger(names);
   const ranked = await rankCharacters(qloo, profiles, baseline, brief, brand, ev);
   const ranking = ranked.ranking;
-  let calls = ranked.calls, cachedCalls = ranked.cached;
-  const q = async (params: Record<string, string>, tag: string) => {
-    const r = await qloo.get('/v2/insights', params, tag);
-    calls++; if (r.cached) cachedCalls++;
-    return r;
-  };
-  const importEv = (p: CharacterProfile, step: string, label: string): string[] => {
-    const src = p.evidence.find((e) => e.step === step);
-    if (!src) return [];
-    const id = `ev${ev.items.length + 1}`;
-    ev.items.push({ ...src, id, step: `${label} (precomputed, ${p.slug})` });
-    return [id];
-  };
+  const calls = ranked.calls, cachedCalls = ranked.cached;
 
   const wanted = brief.character && profiles.some((p) => p.slug === brief.character) ? brief.character : null;
   const featuredSlug = wanted ?? ranking[0].slug;
@@ -261,10 +272,24 @@ export async function runMatch(qloo: QlooClient, profiles: CharacterProfile[], b
   const featured = {
     slug: featuredSlug, requested: !!wanted, rank,
     note: !wanted ? '' : rank === 1
-      ? `You requested ${char(featuredSlug).name}, and Qloo ranks her first for this brief.`
-      : `You requested ${char(featuredSlug).name}. Qloo ranks her #${rank} for this brief (${ranking[0].name} is #1); the package below is built for ${char(featuredSlug).name} as requested.`,
+      ? `You requested ${char(featuredSlug).name}, and she also ranks first for this brief.`
+      : `You requested ${char(featuredSlug).name}. She ranks #${rank} for this brief (${ranking[0].name} is #1); the package below is built for ${char(featuredSlug).name} as requested.`,
   };
-  const winner = profiles.find((p) => p.slug === featuredSlug)!;
+  const counter = { calls, cached: cachedCalls };
+  const local = await localResearch(qloo, profiles, brief, brand, featuredSlug, ev, counter);
+  return { brief, brand, ranking, decision: ranked.decision, featured, local, evidence: ev.items, qloo: { calls: counter.calls, cached: counter.cached } };
+}
+
+/** Package research for one character: Qloo tags, artists and brands for her city and age bucket, plus her stored places.
+ *  The queries depend on the character and city only, not on the brand, so they are usually cached. Used by runMatch for
+ *  the leader (or a requested character) and again when the user casts another character on the result page. */
+export async function localResearch(qloo: QlooClient, profiles: CharacterProfile[], brief: Brief, brand: { id: string; name: string }, slug: string, ev: EvidenceLedger, counter: { calls: number; cached: number }): Promise<LocalFindings> {
+  const q = async (params: Record<string, string>, tag: string) => {
+    const r = await qloo.get('/v2/insights', params, tag);
+    counter.calls++; if (r.cached) counter.cached++;
+    return r;
+  };
+  const winner = profiles.find((p) => p.slug === slug)!;
   const wc: CharacterDef = char(winner.slug);
   const city = brief.city?.trim() || wc.city;
   const seedIds = winner.seeds.map((s) => s.id).join(',');
@@ -283,23 +308,19 @@ export async function runMatch(qloo: QlooClient, profiles: CharacterProfile[], b
   const brandNames = entitiesOf(br.data).map((e) => e.name).filter((n) => n !== brand.name);
   const brandEv = ev.add('local-brands', '/v2/insights', brandParams, brandNames, br.cached);
 
-  const placeEv = importEv(winner, 'profile:places', 'places')[0] ?? '';
+  const src = winner.evidence.find((e) => e.step === 'profile:places');
+  let placeEv = '';
+  if (src) { placeEv = `ev${ev.items.length + 1}`; ev.items.push({ ...src, id: placeEv, step: `places (precomputed, ${winner.slug})` }); }
   const knownBrands = [brand.name, ...brandNames, ...profiles.flatMap((p) => p.seeds.filter((s) => s.type === 'urn:entity:brand').map((s) => s.matchedName))];
   const cat = `${brief.category} ${brief.product}`;
   const judged = city === wc.city ? winner.places.map((x) => ({ x, v: shootability(x, knownBrands, city, cat) })) : [];
-
   return {
-    brief, brand, ranking, decision: ranked.decision, featured,
-    local: {
-      city,
-      angles: angleNames.map((name) => ({ name, evidenceId: angleEv })),
-      artists: artistNames.map((name) => ({ name, evidenceId: artistEv })),
-      brands: brandNames.map((name) => ({ name, evidenceId: brandEv })),
-      places: judged.filter((j) => j.v.ok).map(({ x }) => ({ name: x.name, area: x.area, evidenceId: placeEv, kinds: x.kinds ?? [] })).sort((a, b) => placeTier(a) - placeTier(b)),
-      excludedPlaces: judged.flatMap(({ x, v }) => (v.ok ? [] : [{ name: x.name, reason: v.reason, evidenceId: placeEv }])),
-    },
-    evidence: ev.items,
-    qloo: { calls, cached: cachedCalls },
+    city,
+    angles: angleNames.map((name) => ({ name, evidenceId: angleEv })),
+    artists: artistNames.map((name) => ({ name, evidenceId: artistEv })),
+    brands: brandNames.map((name) => ({ name, evidenceId: brandEv })),
+    places: judged.filter((j) => j.v.ok).map(({ x }) => ({ name: x.name, area: x.area, evidenceId: placeEv, kinds: x.kinds ?? [] })).sort((a, b) => placeTier(a) - placeTier(b)),
+    excludedPlaces: judged.flatMap(({ x, v }) => (v.ok ? [] : [{ name: x.name, reason: v.reason, evidenceId: placeEv }])),
   };
 }
 

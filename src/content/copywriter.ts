@@ -7,10 +7,11 @@ export interface AiLike { run(model: string, input: Record<string, unknown>): Pr
 
 export const COPY_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 
-/** Lines the AI may rewrite. Ranking reasons, prices, shot locations and the image prompt stay template-built. */
+/** Lines the AI may rewrite: the concept line and the visual/action text of the four script beats. Ranking reasons,
+ *  supers and VO (quoted from the brief), prices, shot locations and the image prompt stay template-built. */
 type Slot = { key: string; get: (p: EndorsementPackage) => Line; set: (p: EndorsementPackage, text: string) => void };
 const SLOTS: Slot[] = [
-  { key: 'angle.0', get: (p) => p.angle[0], set: (p, t) => { p.angle[0] = { ...p.angle[0], text: t }; } },
+  { key: 'concept', get: (p) => p.concept, set: (p, t) => { p.concept = { ...p.concept, text: t }; } },
   ...[0, 1, 2, 3].map((i) => ({ key: `script.${i}`, get: (p: EndorsementPackage) => p.script30s[i], set: (p: EndorsementPackage, t: string) => { p.script30s[i] = { ...p.script30s[i], text: t }; } })),
 ];
 

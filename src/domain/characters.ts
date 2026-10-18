@@ -53,7 +53,7 @@ export const CHARACTERS: CharacterDef[] = [
   {
     slug: 'ari-tseng', name: 'Ari Tseng', city: 'Seoul', statedAge: 23, ageBucket: '24_and_younger', gender: 'female',
     role: 'Eyewear and skincare design intern, Seongsu-dong',
-    bio: 'Taipei-born, studying and interning in Seoul. Sketches frames in a Seongsu studio, walks Cheonggyecheon at golden hour and eats at Mangwon Market. Her taste reads older than her age on Qloo, and TasteCast shows that openly as a Drift Check instead of hiding it.',
+    bio: 'Taipei-born, studying and interning in Seoul. Sketches frames in a Seongsu studio, walks Cheonggyecheon at golden hour and eats at Mangwon Market. Her taste reads older than her age on Qloo, and TasteCast shows that openly as an audience insight instead of hiding it.',
     signature: ['Small beauty mark under her left eye', 'Thin beaded silver ear-climber on her left ear', 'Faint freckles, thick straight brows'],
     niches: ['Eyewear', 'Skincare', 'Stationery and design objects', 'Indie music'],
     seeds: [

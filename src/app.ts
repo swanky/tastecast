@@ -5,7 +5,11 @@ import type { KV } from './store/kv.js';
 import { CHARACTERS, DISCLOSURE, type CharacterDef } from './domain/characters.js';
 import { PROFILES_KEY, type CharacterProfile } from './domain/profile.js';
 import { loadBaseline } from './agent/affinity.js';
-import { CHANNELS, normName, resolveBrand, runMatch, type Brief, type Candidate, type MatchCore } from './agent/match.js';
+import { CHANNELS, localResearch, normName, OBJECTIVES, resolveBrand, runMatch, type Brief, type Candidate, type Decision, type MatchCore, type RankedCharacter } from './agent/match.js';
+import { EvidenceLedger } from './agent/evidence.js';
+import { AGE_BUCKETS, type AgeBucket } from './qloo/types.js';
+import { audienceInsight } from './content/creative.js';
+import { exportCase } from './content/export.js';
 import { buildPackage, COPY_VERSION, type EndorsementPackage } from './content/package.js';
 import { quote } from './content/license.js';
 import { rewriteCopy, type AiLike } from './content/copywriter.js';
@@ -37,6 +41,22 @@ export interface S5Panel {
   results?: { ratedAt: string; summary: string; perBrief: { label: string; preferred: 'qloo' | 'llm-only' | 'tie' }[] };
 }
 export interface StoredMatch extends MatchCore { id: string; package: EndorsementPackage; createdAt: string; confirmed?: { exact: boolean; duplicates: number } }
+
+/** One plain sentence on why the verdict is what it is, for the home card and the top of the result page. */
+export function plainReason(d: Decision, ranking: RankedCharacter[]): string {
+  const nm = (s: string) => ranking.find((r) => r.slug === s)?.name ?? s;
+  const w = ranking[0].slug;
+  if (d.level === 'clear') return `${nm(w)} leads on both taste measures and by a clear margin.`;
+  if (d.reason === 'baseline-brand') return 'The reference brand is one of the everyday baseline brands, so its taste index cannot separate the characters.';
+  if (d.reason === 'no-data') return 'Qloo returned no taste-index data for one of the top two, so the lead is not reliable.';
+  const disagree = d.indexLeaderZ !== d.indexLeaderLift
+    ? `The two taste measures disagree: ${nm(d.indexLeaderZ)} has the stronger spread-adjusted index, ${nm(d.indexLeaderLift)} the higher raw lift.` : '';
+  if (d.reason === 'lead-below-threshold') return `${nm(w)} leads by only ${d.margin}, under the ${d.threshold} a clear fit needs.${disagree ? ` ${disagree}` : ''}`;
+  if (disagree) return disagree;
+  return `${nm(w)} leads overall, but the taste index alone picks ${nm(d.indexLeaderZ)}.`;
+}
+/** Older stored runs say "Qloo decided"; the site now says "Clear fit", which is TasteCast's call on Qloo data. */
+const reword = (t: string) => t.replace(/^Qloo decided:/, 'Clear fit:').replace(/"Qloo decided"/g, 'a clear fit');
 
 async function sha(s: string) {
   const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
@@ -82,7 +102,18 @@ export function validateBrief(b: unknown): { brief?: Brief; error?: string } {
   if (!channels.length) return { error: `channels must include one of ${CHANNELS.join(', ')}` };
   const durationMonths = Number(x.durationMonths);
   if (![1, 3, 6, 12].includes(durationMonths)) return { error: 'durationMonths must be 1, 3, 6 or 12' };
-  return { brief: { brandName: str('brandName').slice(0, 80), referenceQuery: str('referenceQuery').slice(0, 80), category: str('category').slice(0, 60) || 'product', product: str('product').slice(0, 60), channels: channels as Brief['channels'], durationMonths, city: str('city').slice(0, 60) || undefined, character: CHARACTERS.some((ch) => ch.slug === str('character')) ? str('character') : undefined } };
+  const brief: Brief = { brandName: str('brandName').slice(0, 80), referenceQuery: str('referenceQuery').slice(0, 80), category: str('category').slice(0, 60) || 'product', product: str('product').slice(0, 60), channels: channels as Brief['channels'], durationMonths, city: str('city').slice(0, 60) || undefined, character: CHARACTERS.some((ch) => ch.slug === str('character')) ? str('character') : undefined };
+  // Optional creative fields: set only when given, so a brief without them hashes to the same stored match as before.
+  if ((OBJECTIVES as readonly string[]).includes(str('objective'))) brief.objective = str('objective') as Brief['objective'];
+  if (str('audience')) brief.audience = str('audience').slice(0, 160);
+  if ((AGE_BUCKETS as readonly string[]).includes(str('audienceAge'))) brief.audienceAge = str('audienceAge') as AgeBucket;
+  if (str('keyMessage')) brief.keyMessage = str('keyMessage').slice(0, 160);
+  const facts = (Array.isArray(x.facts) ? x.facts : typeof x.facts === 'string' ? (x.facts as string).split('\n') : [])
+    .filter((f): f is string => typeof f === 'string').map((f) => f.trim().slice(0, 140)).filter(Boolean).slice(0, 5);
+  if (facts.length) brief.facts = facts;
+  if (str('cta')) brief.cta = str('cta').slice(0, 80);
+  if (x.example === true) brief.example = true;
+  return { brief };
 }
 
 /** Bumped when the ranking formula changes, so stored matches from an older formula are not reused. */
@@ -188,10 +219,37 @@ export function createService({ qloo, qlooFor, kv, ai, defer }: Deps) {
     return next;
   }
 
-  /** precomputed: an instant brand whose run used only stored Qloo results (0 new calls). */
-  const view = (m: StoredMatch, stored: boolean, confirmation: Confirmation) => clientSafe({ ok: true, stored, ...m,
-    precomputed: !!instantBrand(m.brief.referenceQuery) && m.qloo.calls === m.qloo.cached,
-    run: agentRun(m, m.package, stored ? 'stored' : 'live', m.confirmed ?? { exact: true, duplicates: 1 }, confirmation) });
+  /** precomputed: an instant brand whose run used only stored Qloo results (0 new calls).
+   *  plain: one sentence on the verdict. insight: the audience insight for the featured character (a warning only when
+   *  it conflicts with the brief's target age). confirmedCandidate: the token of the confirmed entity, so the brief page
+   *  can rerun this exact brief without searching again (it stays valid only while the reference brand is unchanged). */
+  const view = async (m: StoredMatch, stored: boolean, confirmation: Confirmation) => {
+    const f = m.ranking.find((r) => r.slug === m.package.character.slug);
+    const ch = CHARACTERS.find((c) => c.slug === m.package.character.slug);
+    return clientSafe({ ok: true, stored, ...m,
+      decision: { ...m.decision, text: reword(m.decision.text) },
+      plain: plainReason(m.decision, m.ranking),
+      insight: audienceInsight(m.package.character.name, ch?.statedAge ?? 0, f?.drift, m.brief.audienceAge),
+      confirmedCandidate: await candToken(m.brand.id),
+      precomputed: !!instantBrand(m.brief.referenceQuery) && m.qloo.calls === m.qloo.cached,
+      run: agentRun(m, m.package, stored ? 'stored' : 'live', m.confirmed ?? { exact: true, duplicates: 1 }, confirmation) });
+  };
+
+  /** Stores a new run with its package. On Workers the AI rewrite finishes after the response (see Deps.defer). */
+  async function finish(id: string, core: MatchCore, confirmed: { exact: boolean; duplicates: number } | undefined, confirmation: Confirmation): Promise<ServiceResult & { served: 'live' }> {
+    let pkg = buildPackage(id, core);
+    const draft: StoredMatch = { ...core, id, package: pkg, createdAt: new Date().toISOString(), confirmed };
+    if (ai && defer) {
+      const pending: StoredMatch = { ...draft, package: { ...pkg, copy: { ...pkg.copy, reason: 'ai-pending' } } };
+      await kv.set(`match:${id}`, pending);
+      defer((async () => { const names = await brandNamesOf(draft); await kv.set(`match:${id}`, { ...draft, package: await rewriteCopy(pkg, core.evidence, ai, names) }); })().catch(() => undefined));
+      return { status: 200, served: 'live', body: await view(pending, false, confirmation) };
+    }
+    if (ai) pkg = await rewriteCopy(pkg, core.evidence, ai, await brandNamesOf(draft));
+    const stored: StoredMatch = { ...draft, package: pkg };
+    await kv.set(`match:${id}`, stored);
+    return { status: 200, served: 'live', body: await view(stored, false, confirmation) };
+  }
 
   /** confirmation: how the candidate was picked, reported in the agent run (the server cannot verify a person). */
   async function match(rawBrief: unknown, candidateId: unknown, confirmation: Confirmation = 'unknown'): Promise<ServiceResult & { served?: 'stored' | 'live' }> {
@@ -207,21 +265,55 @@ export function createService({ qloo, qlooFor, kv, ai, defer }: Deps) {
     if (!p?.length || !base) return { status: 503, body: { ok: false, error: 'Character profiles are not precomputed. Run npm run precompute.' } };
     const id = await sha(JSON.stringify({ v: SCORING_VERSION, brief, brand: picked.id }));
     const existing = await kv.get<StoredMatch>(`match:${id}`);
-    if (existing) return { status: 200, served: 'stored', body: view(await ensurePackage(existing), true, confirmation) };
+    if (existing) return { status: 200, served: 'stored', body: await view(await ensurePackage(existing), true, confirmation) };
     const core = await runMatch(client('match'), p, base, brief, { id: picked.id, name: picked.name });
     const confirmed = { exact: picked.exact, duplicates: cands!.filter((c) => normName(c.name) === normName(picked.name)).length };
-    let pkg = buildPackage(id, core);
-    const draft: StoredMatch = { ...core, id, package: pkg, createdAt: new Date().toISOString(), confirmed };
-    if (ai && defer) {
-      const pending: StoredMatch = { ...draft, package: { ...pkg, copy: { ...pkg.copy, reason: 'ai-pending' } } };
-      await kv.set(`match:${id}`, pending);
-      defer((async () => { const names = await brandNamesOf(draft); await kv.set(`match:${id}`, { ...draft, package: await rewriteCopy(pkg, core.evidence, ai, names) }); })().catch(() => undefined));
-      return { status: 200, served: 'live', body: view(pending, false, confirmation) };
-    }
-    if (ai) pkg = await rewriteCopy(pkg, core.evidence, ai, await brandNamesOf(draft));
-    const stored: StoredMatch = { ...draft, package: pkg };
-    await kv.set(`match:${id}`, stored);
-    return { status: 200, served: 'live', body: view(stored, false, confirmation) };
+    return finish(id, core, confirmed, confirmation);
+  }
+
+  /**
+   * "Use this character" on the result page. Keeps the root run's brief, confirmed entity, ranking, decision and
+   * evidence; adds package research for the chosen character (usually cached: it depends on her seeds and city, not
+   * on the brand) and rebuilds the package and quote for her, marked as the user's choice. Stored under its own id.
+   */
+  async function cast(rawId: unknown, rawSlug: unknown): Promise<ServiceResult & { served?: 'stored' | 'live' }> {
+    const first = await getMatch(String(rawId ?? ''));
+    if (!first) return { status: 404, body: { ok: false, error: 'Unknown match id' } };
+    const rootId = first.choice?.from ?? first.id;
+    const root = rootId === first.id ? first : await getMatch(rootId);
+    if (!root) return { status: 404, body: { ok: false, error: 'The original run for this match is gone. Run the brief again.' } };
+    const slug = String(rawSlug ?? '');
+    const rank = root.ranking.findIndex((r) => r.slug === slug) + 1;
+    if (!rank) return { status: 400, body: { ok: false, error: 'Choose a character from this ranking.' } };
+    const id = await sha(JSON.stringify({ v: SCORING_VERSION, parent: rootId, cast: slug }));
+    const existing = await kv.get<StoredMatch>(`match:${id}`);
+    if (existing) return { status: 200, served: 'stored', body: await view(await ensurePackage(existing), true, 'unknown') };
+    const p = await profiles();
+    if (!p?.length) return { status: 503, body: { ok: false, error: 'Character profiles are not precomputed. Run npm run precompute.' } };
+    const names = new Map<string, string>([[root.brand.id, root.brand.name]]);
+    for (const x of p) for (const sd of x.seeds) names.set(sd.id, sd.matchedName);
+    const ev = new EvidenceLedger(names);
+    // The root's package research comes last in its evidence; drop it so ids stay contiguous. If an older run has it
+    // elsewhere, keep everything (ids never move, the new research is appended).
+    const isLocal = (e: { step: string }) => e.step.startsWith('local-') || e.step.startsWith('places (precomputed');
+    const kept = root.evidence.filter((e) => !isLocal(e));
+    ev.items = (kept.every((e, i) => e.id === `ev${i + 1}`) ? kept : root.evidence).map((e) => ({ ...e }));
+    const counter = { calls: 0, cached: 0 };
+    const local = await localResearch(client('match'), p, root.brief, root.brand, slug, ev, counter);
+    const leader = root.ranking[0];
+    const name = root.ranking[rank - 1].name;
+    const core: MatchCore = {
+      brief: root.brief, brand: root.brand, ranking: root.ranking, decision: root.decision, local, evidence: ev.items, qloo: root.qloo,
+      featured: { slug, requested: false, chosen: true, rank, note: rank === 1 ? `You chose ${name}, who is also #1 for this brief.` : `You chose ${name}, #${rank} for this brief (${leader.name} is #1). The ranking and its evidence are unchanged.` },
+      choice: { slug, by: 'user', from: rootId, recommended: leader.slug, qloo: counter },
+    };
+    return finish(id, core, root.confirmed, 'unknown');
+  }
+
+  /** Brief, script and image prompt for the current case as text, for copy and download. */
+  async function exportOf(id: string) {
+    const m = await getMatch(id);
+    return m ? exportCase(m, quote(m.id, m, m.package)) : undefined;
   }
 
   async function getMatch(id: string): Promise<StoredMatch | undefined> {
@@ -238,7 +330,7 @@ export function createService({ qloo, qlooFor, kv, ai, defer }: Deps) {
       const pick = cands.find((c) => c.exact);
       const m = pick ? await kv.get<StoredMatch>(`match:${await sha(JSON.stringify({ v: SCORING_VERSION, brief, brand: pick.id }))}`) : undefined;
       return {
-        index: i, label: d.label, href: `/brief?demo=${i}&confirm=1`, brief,
+        index: i, label: d.label, href: `/brief?demo=${i}&confirm=1`, brief, plain: m ? plainReason(m.decision, m.ranking) : null,
         verdict: m ? { level: m.decision.level, margin: m.decision.margin, leader: m.ranking[0].name, leaderSlug: m.ranking[0].slug, viable: m.decision.level === 'close' ? [m.ranking[0].slug, ...m.decision.alternatives].map((s) => CHARACTERS.find((c) => c.slug === s)?.name ?? s) : [m.ranking[0].name], matchId: m.id } : null,
       };
     }));
@@ -256,7 +348,7 @@ export function createService({ qloo, qlooFor, kv, ai, defer }: Deps) {
     }));
   }
 
-  return { resolve, match, getMatch, demos, profiles, instant };
+  return { resolve, match, cast, getMatch, exportOf, view, demos, profiles, instant };
 }
 
 const round2 = (x: number) => Math.round(x * 100) / 100;
@@ -336,7 +428,18 @@ export function createApp(deps: Deps) {
 
   app.get('/api/match/:id', async (c) => {
     const m = await svc.getMatch(c.req.param('id'));
-    return m ? c.json(clientSafe({ ok: true, stored: true, ...m, run: agentRun(m, m.package, 'stored', m.confirmed ?? { exact: true, duplicates: 1 }) })) : c.json({ ok: false, error: 'Unknown match id' }, 404);
+    return m ? c.json(await svc.view(m, true, 'unknown')) : c.json({ ok: false, error: 'Unknown match id' }, 404);
+  });
+
+  app.post('/api/match/:id/cast', async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const r = await svc.cast(c.req.param('id'), body.character);
+    return c.json(r.body, r.status);
+  });
+
+  app.get('/api/export/:id', async (c) => {
+    const x = await svc.exportOf(c.req.param('id'));
+    return x ? c.json(clientSafe({ ok: true, ...x })) : c.json({ ok: false, error: 'Unknown match id' }, 404);
   });
 
   app.get('/api/package/:id', async (c) => {

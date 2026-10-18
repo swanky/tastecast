@@ -60,7 +60,7 @@ Live loop per brief, 7 to 8 calls, all cached by the sorted query string:
 - **Taste index (L2b, 2 calls per brief).** Qloo is asked: among fans of the reference brand, what is the affinity for each character's artist and brand seeds (`filter.type=urn:entity:artist|brand`, `signal.interests.entities=<brand>`, `filter.results.entities=<all characters' seeds>`)? Every character is scored inside the same query. Each seed is compared with its own baseline: the mean and SD of the same affinity among fans of six everyday brands (Starbucks, Nike, Uniqlo, IKEA, Patagonia, L.L.Bean), precomputed once (6 searches + 12 calls). z = (affinity − baseline mean) / max(SD, 0.02). The character's index is the mean z over covered seeds, mapped onto 0..1 as 0.5 + z/6, clamped (±3σ saturates).
 - audience = (cosine + 1) / 2 of the 6 age buckets + female affinity.
 - Taste-tag overlap (L3) and house-brand fit (L4) are still computed and shown as **context with zero weight**.
-- **Decision.** "Qloo decided" only if the lead is ≥ 0.08 **and** the taste index picks the same leader under z and under raw lift. Otherwise "Close call": the UI lists the viable characters with their tradeoffs.
+- **Decision.** "Clear fit · based on Qloo data" (called "Qloo decided" before 2026-10-18; it is TasteCast's rule applied to Qloo data) only if the lead is ≥ 0.08 **and** the taste index picks the same leader under z and under raw lift. Otherwise "Close call": the UI lists the viable characters with their tradeoffs.
 - **Niche tiebreak.** Operator data, labelled as such. It only acts when the gap is under 0.03.
 - **Campaign city.** It does not change the score. It adds a same-query in-city line (the same reverse question with `signal.location.query`) as context. Reason: see `docs/milestone-2.md`.
 
@@ -75,6 +75,7 @@ Scores are relative signals, not purchase probability (see `docs/limitations.md`
 | `/` | `public/index.html` | `GET /api/characters` |
 | `/c/:slug` | `public/character.html` + `character.js` | `GET /api/characters/:slug` (names and derived numbers only; never Qloo entity IDs) |
 | `/brief[?character=slug][&demo=N&confirm=1]` | `public/brief.html` + `brief.js` | `/api/resolve`, `/api/match`, `/api/license/:id` |
+| `/brief?match=<id>` | same | `GET /api/match/:id` (refills the brief; carries a `confirmedCandidate` token so an edited brief can be rerun without a new search), `POST /api/match/:id/cast`, `GET /api/export/:id` |
 
 - Shared chrome, disclosures and helpers live in `public/common.js`. Styles are in `public/styles.css`: an editorial system with Fraunces (display) and DM Sans (UI), both SIL OFL and self-hosted.
 - `public/assets/` holds web-size character images (≤1280 px, CC BY-NC 4.0, see `LICENSE-images`) and the OFL fonts with their licenses; `scripts/build-assets.py` rebuilds them from the source library.
@@ -141,3 +142,12 @@ Evidence entries the client sees carry the endpoint, the parameter **names and d
 2. **Live:** `npm run precompute` (logged calls), then 3 demo briefs end to end through the HTTP API, then a repeat run served from cache (0 new calls). Also an unknown brand (no candidates) and a no-key 503.
 3. **Screenshot:** headless Chrome of the result page for demo brief 1, plus the license JSON.
 4. **Security:** grep the repo and the served HTML/JS for the key value; `git status` shows no cache files.
+
+## 3c. Result page and package v6 (2026-10-18)
+
+- **Page order.** Recommendation (verdict, one plain reason, up to three tradeoffs) → Why this fit (ranking cards; extra signals collapsed) → Character choice → Campaign (concept, brief recap, script, shots, image prompt and overlays, styling, sound) → Export and next step (copy or download the campaign brief, quote summary). The agent run, the scoring method, the copy checker, the licence JSON and the evidence are in a collapsed Technical details section; `#evN` links open it.
+- **Casting.** `POST /api/match/:id/cast {character}` keeps the root run's brief, confirmed entity, ranking, decision and evidence (minus its package research), runs package research for the chosen character (`localResearch`, usually cached because it depends on her seeds and city, not on the brand), and stores the result under `sha({v, parent, cast})` with `choice = {slug, by: 'user', from, recommended, qloo}`. A close call's default package has status `preview`; the cast one has `chosen`. The MCP tool `choose_character` calls the same service.
+- **Active-run guard.** The brief page bumps a run counter and aborts the previous request on every resolve, match and casting. The AI copy refresh, quote and export answers are dropped unless they belong to the current run and match id. `api()` has a timeout and reports `abort`, `timeout`, `network`, `http` or `parse`; the quote and export have retry buttons, buttons are disabled while their request runs.
+- **Brief fields.** Optional `objective`, `audience`, `audienceAge`, `keyMessage`, `facts`, `cta` and `example`. They are set only when given, so a brief without them hashes to the same stored match as before. `audienceAge` is never sent to Qloo; it only decides whether the audience insight is a warning.
+- **Package lines.** `Line = {text, sourceIds, sources[]}` with `sources[].kind` in `qloo | brief | creative | rule` and a `supports` note. `sourceIds` keeps only the Qloo ids. `assertSourced` needs at least one source per line and every Qloo id to be in this run's evidence. Script beats add `t`, `beat`, `purpose`, `vo`, `message` and `cta`; shots add `action` and `product`; `imagePrompt` is for generation only and `overlays` holds the post-production text. Creative rules (product kinds, character actions, beat plans per objective, channel timecodes) are in `src/content/creative.ts`; exports in `src/content/export.ts`.
+

@@ -16,18 +16,19 @@ const core: MatchCore = {
 };
 
 describe('endorsement package', () => {
-  it('every line carries a source id and the package ends with the disclosure', () => {
+  it('every line has at least one typed source, and the disclosure opens and closes the script', () => {
     const p = buildPackage('id1', core);
-    expect(packageLines(p).every((l) => l.sourceIds.length > 0)).toBe(true);
+    expect(packageLines(p).every((l) => (l.sources ?? []).length > 0)).toBe(true);
     expect(p.disclosure).toBe('#ad · AI-generated character');
-    expect(p.script30s.at(-1)!.text).toContain('#ad · AI-generated character');
+    expect(p.script30s[0].vo).toContain('#ad · AI-generated character');
+    expect(p.script30s.at(-1)!.vo).toContain('#ad · AI-generated character');
     expect(p.shotList).toHaveLength(6);
     expect(p.shotList.filter((s) => s.gaze.includes('into the lens'))).toHaveLength(1);
   });
   it('fails when a line has no source', () => {
     const p = buildPackage('id1', core);
-    p.soundtrack.push({ text: 'unsourced', sourceIds: [] });
-    expect(() => assertSourced(p)).toThrow('without a Qloo source');
+    p.soundtrack.push({ text: 'unsourced', sourceIds: [], sources: [] });
+    expect(() => assertSourced(p)).toThrow('without a source');
   });
   it('license quote is displayed, never charged, approvals unchecked', () => {
     const p = buildPackage('id1', core);

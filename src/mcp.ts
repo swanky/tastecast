@@ -21,6 +21,13 @@ const briefSchema = z.object({
   durationMonths: z.union([z.literal(1), z.literal(3), z.literal(6), z.literal(12)]),
   city: z.string().max(60).optional().describe('Optional campaign city. Adds a no-weight in-city check (extra live Qloo calls).'),
   character: z.enum(CHARACTERS.map((c) => c.slug) as [string, ...string[]]).optional().describe('Optional requested character; all three are still ranked.'),
+  objective: z.enum(['awareness', 'consideration', 'launch', 'conversion']).optional().describe('Optional campaign objective; shapes the script structure.'),
+  audience: z.string().max(160).optional().describe('Optional target audience in words.'),
+  audienceAge: z.enum(['24_and_younger', '25_to_29', '30_to_34', '35_to_44', '45_to_54', '55_and_older']).optional().describe('Optional target age bracket; the audience insight warns only when a character conflicts with it.'),
+  keyMessage: z.string().max(160).optional(),
+  facts: z.array(z.string().max(140)).max(5).optional().describe('Approved product facts. Missing facts are marked "to be supplied", never invented.'),
+  cta: z.string().max(80).optional(),
+  example: z.boolean().optional().describe('True when the creative fields are synthetic example data (the demo briefs). Keep it as listed.'),
 });
 
 type Out = { content: { type: 'text'; text: string }[]; structuredContent?: Record<string, unknown>; isError?: boolean };
@@ -41,7 +48,7 @@ export function buildMcpServer(deps: Deps, origin: string) {
   const server = new McpServer(MCP_SERVER_INFO, {
     instructions: [
       'TasteCast ranks three disclosed, original AI characters (virtual models) for a brand brief using Qloo taste data, then drafts an endorsement package and a license quote.',
-      'Workflow: (1) resolve_brand with a well-known reference brand; (2) SHOW the candidates to your user and let them confirm one (pass its candidate_id); (3) rank_roster; (4) draft_package; (5) quote_license.',
+      'Workflow: (1) resolve_brand with a well-known reference brand; (2) SHOW the candidates to your user and let them confirm one (pass its candidate_id); (3) rank_roster; (4) for a close call, let your user pick and call choose_character; (5) draft_package; (6) quote_license.',
       'Start with list_demo_briefs: demo briefs are served from stored Qloo results and cost no live calls. Custom briefs make live Qloo calls. There is no project-side cap, only a per-network abuse guard of 20 rankings and 60 searches a day.',
       `Every endorsement must carry the disclosure "${DISCLOSURE}". The characters are fictional and are not real users of any product. Prices are quotes and are never charged.`,
     ].join(' '),
@@ -55,7 +62,7 @@ export function buildMcpServer(deps: Deps, origin: string) {
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async () => guarded(async () => {
     const demos = await svc.demos();
-    return ok(demos.map((d) => `${d.label} (reference ${d.brief.referenceQuery}): ${d.verdict ? `${d.verdict.level === 'clear' ? 'Qloo decided' : 'Close call'} · ${d.verdict.viable.join(' / ')} · lead ${d.verdict.margin}` : 'not run yet'}`).join('\n'), { demos });
+    return ok(demos.map((d) => `${d.label} (reference ${d.brief.referenceQuery}): ${d.verdict ? `${d.verdict.level === 'clear' ? 'Clear fit · based on Qloo data' : 'Close call'} · ${d.verdict.viable.join(' / ')} · lead ${d.verdict.margin}` : 'not run yet'}`).join('\n'), { demos });
   }));
 
   server.registerTool('resolve_brand', {
@@ -74,7 +81,7 @@ export function buildMcpServer(deps: Deps, origin: string) {
 
   server.registerTool('rank_roster', {
     title: 'Rank the AI characters for a brief',
-    description: 'Runs the TasteCast loop for a confirmed Qloo entity: audience demographics, the Qloo taste index for all three characters against an everyday-brand baseline, no-weight context checks, then a self-check. Returns the ranking, the verdict ("Qloo decided" or "Close call" with viable characters and tradeoffs), the agent run trace with evidence ids, and a match_id for draft_package and quote_license. Requires candidate_id from resolve_brand for the same referenceQuery.',
+    description: 'Runs the TasteCast loop for a confirmed Qloo entity: audience demographics, the Qloo taste index for all three characters against an everyday-brand baseline, no-weight context checks, then a self-check. Returns the ranking, the verdict ("Clear fit · based on Qloo data" or "Close call" with viable characters and tradeoffs), the agent run trace with evidence ids, and a match_id for draft_package and quote_license. Requires candidate_id from resolve_brand for the same referenceQuery.',
     inputSchema: z.object({ brief: briefSchema, candidate_id: z.string().min(3).max(40) }),
     annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: true },
   }, async ({ brief, candidate_id }) => guarded(async () => {
@@ -84,9 +91,9 @@ export function buildMcpServer(deps: Deps, origin: string) {
     const d = m.decision;
     const data = {
       match_id: m.id, served: m.stored ? 'stored' : 'live', view_url: view(`/brief?match=${m.id}`),
-      verdict: { level: d.level === 'clear' ? 'Qloo decided' : 'Close call', reason: d.reason, lead: d.margin, needs: d.threshold, text: d.text, tradeoffs: d.tradeoffs.map((t: any) => t.text) },
+      verdict: { level: d.level === 'clear' ? 'Clear fit · based on Qloo data' : 'Close call', reason: d.reason, plain: m.plain, lead: d.margin, needs: d.threshold, text: d.text, tradeoffs: d.tradeoffs.map((t: any) => t.text) },
       ranking: m.ranking.map((x: any, i: number) => ({ rank: i + 1, character: x.name, slug: x.slug, city: x.city, fit_score: Math.round(x.score * 100), taste_index_sigma: x.parts.indexZ, audience_cosine: x.parts.cosine, why: x.why })),
-      agent_run: m.run, qloo: m.qloo, precomputed: m.precomputed, disclosure: DISCLOSURE,
+      agent_run: m.run, qloo: m.qloo, precomputed: m.precomputed, audience_insight: m.insight, disclosure: DISCLOSURE,
     };
     const summary = `${data.verdict.level}: ${data.verdict.text}\n` + data.ranking.map((x: any) => `${x.rank}. ${x.character} — fit score ${x.fit_score}/100, taste index ${x.taste_index_sigma >= 0 ? '+' : ''}${x.taste_index_sigma}σ, audience cosine ${x.audience_cosine}`).join('\n') + `\nView: ${data.view_url}`;
     return ok(summary, data);
@@ -94,15 +101,27 @@ export function buildMcpServer(deps: Deps, origin: string) {
 
   server.registerTool('draft_package', {
     title: 'Draft the endorsement package',
-    description: 'Returns the endorsement package for a match: content angle, 30-second script, shot list, soundtrack, styling, image prompt. Every line carries Qloo evidence ids. Includes the required disclosure. No live Qloo calls.',
+    description: 'Returns the endorsement package for a match: campaign concept, 30-second script with timecodes, visual/action, VO/super, product message and CTA, a shot list with the product placement, styling, an image-generation prompt and post-production overlays. Every line lists its sources (Qloo evidence ids, the brief, creative interpretation or a product rule). Missing brief facts are marked to be supplied. Includes the required disclosure. No live Qloo calls.',
     inputSchema: z.object({ match_id: z.string().regex(/^[0-9a-f]{16}$/) }),
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async ({ match_id }) => guarded(async () => {
     const m = await svc.getMatch(match_id);
     if (!m) return fail('Unknown match_id. Call rank_roster first.');
     const p = clientSafe(m.package);
-    const summary = `${p.character.name} × ${p.brand.name} (${p.city}). Disclosure: ${p.disclosure}\n` + p.script30s.map((l) => `${l.t}: ${l.text} [${l.sourceIds.join(', ')}]`).join('\n');
+    const summary = `${p.character.name} × ${p.brand.name} (${p.city}). Disclosure: ${p.disclosure}\n` + `Status: ${p.status.label}.${p.inputs.toSupply.length ? ` To be supplied: ${p.inputs.toSupply.join(', ')}.` : ''}\n` + p.script30s.map((l) => `${l.t} ${l.beat}: ${l.text} | VO/super: ${l.vo} [${l.sourceIds.join(', ')}]`).join('\n');
     return ok(summary, { package: p, agent_run: clientSafe(agentRun(m, m.package, 'stored', m.confirmed ?? { exact: true, duplicates: 1 })).steps.slice(-2) });
+  }));
+
+  server.registerTool('choose_character', {
+    title: 'Cast a character for a match',
+    description: 'Casts one of the ranked characters for a match (for a close call, after your user picks on the tradeoffs). Keeps the brief, the confirmed entity, the ranking and the evidence; rebuilds the package and quote for that character, marked as the user\'s choice, under a new match_id. Usually 0 live Qloo calls (the package research for each character is cached).',
+    inputSchema: z.object({ match_id: z.string().regex(/^[0-9a-f]{16}$/), character: z.enum(CHARACTERS.map((c) => c.slug) as [string, ...string[]]) }),
+    annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: true },
+  }, async ({ match_id, character }) => guarded(async () => {
+    const r = await svc.cast(match_id, character);
+    if (r.status !== 200) return fail(String(r.body.error));
+    const m = r.body as any;
+    return ok(`${m.package.status.label}: ${m.package.character.name}. ${m.featured.note} New match_id ${m.id}; Qloo calls for the casting ${m.choice?.qloo?.calls ?? 0}.`, { match_id: m.id, view_url: view(`/brief?match=${m.id}`), status: m.package.status, choice: m.choice });
   }));
 
   server.registerTool('quote_license', {
@@ -114,7 +133,7 @@ export function buildMcpServer(deps: Deps, origin: string) {
     const m = await svc.getMatch(match_id);
     if (!m) return fail('Unknown match_id. Call rank_roster first.');
     const q = clientSafe(quote(m.id, m, m.package));
-    return ok(`US$${q.price_quote.amount} for ${q.character.name} × ${q.licensee}, ${q.duration.months} months. charged:false; approvals pending.`, { license: q as unknown as Record<string, unknown> });
+    return ok(`US$${q.price_quote.amount} for ${q.character.name} × ${q.licensee}, ${q.duration.months} months, character licence only (production not included). charged:false; approvals pending.`, { license: q as unknown as Record<string, unknown> });
   }));
 
   return server;

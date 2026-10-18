@@ -45,8 +45,8 @@ describe('package wording', () => {
   const all = [...p.script30s.map((l) => l.text), p.imagePrompt.text].join(' ');
   it('frames the product as styled placement, never as something the character uses daily', () => {
     expect(all).not.toMatch(/\b(daily|routine|real routine|already in use|uses the)\b/i);
-    expect(p.script30s[1].text).toMatch(/styled product placement/i);
-    expect(p.script30s[1].text).toMatch(/no claim that she is a user/);
+    expect(p.script30s[2].text).toMatch(/styled product placement/i);
+    expect(p.script30s[2].text).toMatch(/no claim that she is a user/);
   });
   it('the soundtrack line is a direction, not booked or cleared music', () => {
     expect(p.script30s[2].text).toContain('Soundtrack direction: Some Artist or similar.');

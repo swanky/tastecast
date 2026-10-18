@@ -16,14 +16,18 @@ What kind of agent this is: a deterministic, auditable loop exposed as MCP tools
 
 1. Open the [home page](https://tastecast.swanky-models.workers.dev) and pick one of the four **demo briefs**. Each card shows its stored verdict.
 2. The brief fills itself, Qloo's `/search` candidates appear, and the demo link presses **Confirm** for you (the agent run says "confirmed automatically (demo link)"). To make the checkpoint yourself, open [`/brief?demo=2`](https://tastecast.swanky-models.workers.dev/brief?demo=2) without `&confirm=1`: Qloo lists two entries named "Le Creuset", the more popular one is preselected and the other is labelled, and nothing is ranked until you press Confirm.
-3. Read the result: the verdict banner, the ranked characters (fit score /100, Qloo taste index in σ, audience similarity as a signed cosine), the **Agent run** timeline, the package, the license JSON (`charged:false`) and the evidence list. Every `evN` chip opens the Qloo call behind it.
+3. Read the result, top to bottom: the **Recommendation** (the verdict and one plain reason), **Why this fit** (fit score /100, Qloo taste index in σ, audience similarity as a signed cosine), **Character choice**, the **Campaign** (concept, 30-second script with timecodes, visual and action, VO or super, product message and CTA, a shot list that says what she does and how the product appears, an image-generation prompt and the post-production overlays), and **Export and next step** (copy or download the campaign brief, a plain licence-quote summary). The agent run, the scoring method, the evidence, the copy checker and the licence JSON sit under **Technical details**. Every `evN` chip opens the Qloo call behind it.
+4. On the close call (Loma Coffee Gear), the package starts as a **preview**. Press **Use Ingrid** (or Use Itzel): the brief, the confirmed Qloo entity, the ranking and the evidence stay as they are, and the campaign, quote and export are rebuilt for her, marked **Your choice**. It costs no new Qloo calls: package research depends on the character and her city, not on the brand, and it is already stored.
+5. Any result link (`/brief?match=<id>`) refills the whole brief. Edit it and press **Rerun with the confirmed entity**; changing the reference brand drops the confirmation, so you search and confirm again.
 
 | Demo brief (fictional brand) | Qloo reference brand | Verdict |
 |---|---|---|
-| Pica Pica Fruit Co., chili-lime fruit cups | Tajín | Qloo decided: Itzel Robles (lead 0.368) |
-| Nokdu Lab, green tea toner | Innisfree | Qloo decided: Ari Tseng (lead 0.184) |
-| North Kiln, stoneware tea set | Le Creuset | Qloo decided: Ingrid Brekkhus (lead 0.380) |
-| Loma Coffee Gear, pour-over dripper | Blue Bottle Coffee | Close call: Itzel or Ingrid (lead 0.104 clears 0.08, but the two index measures disagree) |
+| Pica Pica Fruit Co., chili-lime fruit cups (launch) | Tajín | Clear fit: Itzel Robles (lead 0.368) |
+| Nokdu Lab, green tea toner (consideration) | Innisfree | Clear fit: Ari Tseng (lead 0.184); an audience insight warns that her taste skews older than the brief's under-25 target |
+| North Kiln, stoneware tea set (awareness) | Le Creuset | Clear fit: Ingrid Brekkhus (lead 0.380) |
+| Loma Coffee Gear, pour-over dripper (conversion) | Blue Bottle Coffee | Close call: Itzel or Ingrid. The lead (0.104) clears 0.08, but the two taste measures disagree: Itzel has the stronger spread-adjusted index, Ingrid the higher raw lift |
+
+The demo briefs carry an objective, audience, key message, product facts and CTA. These are synthetic examples and are labelled as such on the page. Loma leaves the facts, key message and CTA blank on purpose, so its package shows them as "to be supplied" instead of inventing them.
 
 Direct links: `/brief?demo=0&confirm=1` … `demo=3`. The 4 demo briefs and the 11 instant reference brands below are served from **stored Qloo results**: they return at once and never call Qloo. Other reference brands make live Qloo calls. There is no project-side cap on them, only a generous abuse guard of 20 live matches and 60 live searches per network a day, so a judging team behind one office network is not blocked. If the guard is reached, or Qloo itself answers 429 twice in a row, the site says so and links back to the demos.
 
@@ -35,8 +39,8 @@ Direct links: `/brief?demo=0&confirm=1` … `demo=3`. The 4 demo briefs and the 
 | Starbucks | Close call, Itzel and Ari tied. Also a baseline brand |
 | Glossier | Close call, Itzel leads (lead 0.091, measures disagree) |
 | Aesop | Close call, Ingrid leads by 0.005 |
-| Stüssy | Qloo decided: Itzel Robles (lead 0.190) |
-| Fender | Qloo decided: Ingrid Brekkhus (lead 0.306) |
+| Stüssy | Clear fit: Itzel Robles (lead 0.190) |
+| Fender | Clear fit: Ingrid Brekkhus (lead 0.306) |
 | Gentle Monster | Close call, Ari leads (lead 0.071) |
 | Tajín, Innisfree, Le Creuset, Blue Bottle Coffee | Same as the demo briefs above |
 
@@ -50,14 +54,14 @@ The same loop is a remote MCP server. Add it to any MCP client:
 { "mcpServers": { "tastecast": { "type": "http", "url": "https://tastecast.swanky-models.workers.dev/mcp" } } }
 ```
 
-Tools: `list_demo_briefs` → `resolve_brand` → (your user confirms a `candidate_id`) → `rank_roster` → `draft_package` → `quote_license`. `rank_roster` refuses an entity that did not come from `resolve_brand`, returns the verdict, the ranking, the agent-run trace with evidence ids, and a `view_url` that opens the same run in the browser. The server can check that the token came from that search, not that a person chose it, so an MCP run's trace says "confirmed by the calling agent".
+Tools: `list_demo_briefs` → `resolve_brand` → (your user confirms a `candidate_id`) → `rank_roster` → (for a close call, your user picks and you call `choose_character`) → `draft_package` → `quote_license`. `rank_roster` refuses an entity that did not come from `resolve_brand`, returns the verdict, the ranking, the agent-run trace with evidence ids, and a `view_url` that opens the same run in the browser. The server can check that the token came from that search, not that a person chose it, so an MCP run's trace says "confirmed by the calling agent".
 
 Smoke test with the official SDK client (uses a demo brief, no live Qloo calls):
 
 ```bash
 npm install
 node scripts/mcp-smoke.mjs https://tastecast.swanky-models.workers.dev/mcp 2
-# rank_roster: Qloo decided (decided) lead 0.38 / needs 0.08; served stored; ...
+# rank_roster: Clear fit · based on Qloo data (decided) lead 0.38 / needs 0.08; served stored; ...
 #   agent run: plan → check → tool → tool → tool → tool → tool → check → check → check → check → tool → stop
 # quote_license: US$11340 charged=false approvals={"character_operator":false,"brand":false}
 ```
@@ -66,19 +70,30 @@ Stateless and session-free (official `@modelcontextprotocol/server` SDK, JSON re
 
 ## How Qloo powers it
 
-Qloo is the decision-maker, not decoration. For each confirmed reference brand the agent calls:
+Qloo data drives the decision; TasteCast's rules turn it into a verdict. For each confirmed reference brand the agent calls:
 
 1. **`/search`** to resolve the brand. The entity must be confirmed (by a person in the browser, or by the calling agent over MCP) before any insights call; the server enforces this.
 2. **Audience** (`/v2/insights` demographics): the brand's age and gender profile, compared with each character's seed profile as a cosine.
 3. **Taste index** (`/v2/insights`, `signal.interests.entities=<brand>`, `filter.results.entities=<all characters' seeds>`): how strongly the brand's fans like each character's artists, brands, TV and film, against a baseline of six everyday brands, as z-scores. One query scores all three characters.
 4. **Context, no weight:** shared taste tags and a house-brand fit check with explainability.
-5. **Package research:** tags, artists and brands for the winning character's city and age bucket. Places that are other brands' shops are left out as shoot locations, and so are hotels, bars and clubs unless the product is a hospitality one. Artists are a soundtrack direction ("X or similar"), not cleared music.
+5. **Package research:** tags, artists and brands for the featured character's city and age bucket. Places that are other brands' shops are left out as shoot locations, and so are hotels, bars and clubs unless the product is a hospitality one. Artists are a soundtrack direction ("X or similar"), not cleared music.
 
-Fit score = 0.6 × taste index + 0.4 × (cosine + 1) / 2. **"Qloo decided"** needs a lead of at least 0.08 **and** the taste index must pick the same leader by z-score and by raw lift. Otherwise it is a **close call**, with the viable characters and their tradeoffs.
+How the score works (the same text is on every result page under Technical details):
+
+- For each of a character's seeds, Qloo gives an affinity *a* among the brand's fans, and the same affinity among fans of six everyday baseline brands (Starbucks, Nike, Uniqlo, IKEA, Patagonia, L.L.Bean). Lift = *a* − μ and z = lift ÷ max(σ, 0.02), with μ and σ taken over the baseline brands.
+- Taste index = mean z over the seeds Qloo covered (in σ); raw lift = mean lift. Index score = clamp(0.5 + z ÷ 6, 0, 1).
+- Audience term = (cosine + 1) ÷ 2, comparing the brand's fans with the character's seed fans over six age brackets plus the female share.
+- Fit = 0.6 × index score + 0.4 × audience term, shown × 100.
+- **Clear fit** (labelled "Clear fit · based on Qloo data"): a lead of at least 0.08 **and** the z-based index and the raw lift both pick the leader, with Qloo coverage for both of the top two. Otherwise it is a **close call**, with the viable characters, their tradeoffs and a one-line plain reason, and a person casts.
+- Qloo data: the affinities and demographics. TasteCast heuristics: the baseline panel, the 0.02 floor, the ±3σ mapping, the 0.6/0.4 weights, the 0.08 threshold, the 0.03 niche tiebreak (operator data), and the two-bracket gap for audience warnings.
+
+**Audience insight.** Each character's taste seeds have an age profile on Qloo. Ari's seeds peak at 30–34, although she is 23. That is shown as an audience insight on her page, and the result page warns only when a brief names a target age two or more brackets from that peak (Nokdu's under-25 target does). The seeds are operator-chosen proxies for taste, not a fan base.
 
 Where the numbers came from: the 0.08 margin and the two-measure agreement rule were written down before the sensitivity and robustness runs (`docs/milestone-2.md`). The 0.6/0.4 weights, the ±3σ mapping and the 0.02 SD floor were chosen during milestone 2 on 9 briefs, then frozen for the milestone-3 robustness run (18 briefs with a real reference brand). The three decisive demos were chosen from those runs; Blue Bottle was kept as the close call. Seeds were not re-tuned to make any demo come out a particular way. 10 of 18 real briefs end as close calls (`docs/limitations.md`).
 
-Optional: Workers AI (Llama 3.3 70B) rewrites five copy lines once per package, in the background after the result is shown (the page swaps in the checked lines when they are ready). A checker rejects any rewrite that adds a name, a brand from the evidence, a number, first-person/testimonial wording, talent or licensing wording ("featuring", "starring", "licensed"), or a claim that the character uses the product ("daily", "routine"), or drops the disclosure or the "or similar" of a soundtrack direction. Rejected lines keep the template text, and evidence ids are never written by the model.
+**Package and sources.** Each package line lists where it comes from: **Qloo data** (an evidence id from this run, saying what it supports, such as a place or an artist), the **brand brief** (facts, key message and CTA, quoted as written), **creative interpretation** (story beats, what the character does, how the product appears) or a **product rule** (disclosure, identity, shot pattern). A Qloo id is never attached to a line it does not support; the end card, for example, cites the brief's CTA and the disclosure rule. Missing brief facts are shown as "to be supplied". The script follows the objective (awareness, consideration, launch or conversion) and the channels (9:16 with a 2-second hook for TikTok and Reels, a 16:9 cut and a 6-second bumper for YouTube, a silent loop for web, key frames for out-of-home). The character is never shown using the product: it appears as a styled prop or an insert.
+
+Optional: Workers AI (Llama 3.3 70B) rewrites the concept line and the four script visuals once per package, in the background after the result is shown (the page swaps in the checked lines when they are ready). A checker rejects any rewrite that adds a name, a brand from the evidence, a number, first-person/testimonial wording, talent or licensing wording ("featuring", "starring", "licensed"), or a claim that the character uses the product ("daily", "routine"), or drops the disclosure or the "or similar" of a soundtrack direction. Rejected lines keep the template text, and evidence ids are never written by the model.
 
 ## Architecture
 
@@ -116,7 +131,7 @@ The counts are worked out from the call pattern on an empty cache; every script 
 Checks:
 
 ```bash
-npm test             # 81 tests; from a clean clone 79 run and 2 are skipped (they need a local Qloo cache). No network.
+npm test             # 95 tests; from a clean clone 91 run and 4 are skipped (they need a local Qloo cache). No network.
 npm run typecheck
 npm run scan-public  # fails on cache/, .env, the key, raw Qloo JSON or UUID-shaped ids (any case, with or without dashes)
 npm run hooks        # optional: run scan-public before every git push
@@ -130,5 +145,5 @@ The git history was squashed before the repo was made public; the milestone docs
 
 - The Qloo key lives only in the server environment. Clients never see entity IDs; candidates use opaque tokens.
 - Every live Qloo call is logged (timestamp, tag, path, status, latency) and counted for reporting. There is no project-side cap; the site keeps a per-network abuse guard.
-- License quotes are never charged and both approvals stay false until people sign off.
+- Licence quotes are never charged, cover the character licence only (production is not included), and both approvals stay false: the character operator and the brand approve outside TasteCast. The result page's next step is "Export for review".
 - The characters are AI-generated, labelled as such on every page and in every package.

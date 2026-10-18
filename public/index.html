@@ -76,8 +76,8 @@ claude mcp add --transport http tastecast \
     const demos = await api('/api/demos').catch(() => []);
     $('#democards').innerHTML = demos.map((d) => {
       const v = d.verdict;
-      const badge = !v ? '' : v.level === 'clear' ? `<em class="badge">Qloo decided · ${esc(v.leader)}</em>` : `<em class="badge close">Close call · ${esc(v.viable.join(' or '))}</em>`;
-      const lead = v ? `<div class="small muted">Lead ${v.margin.toFixed(3)} · needs 0.08</div>` : '';
+      const badge = !v ? '' : v.level === 'clear' ? `<em class="badge">Clear fit · ${esc(v.leader)}</em>` : `<em class="badge close">Close call · ${esc(v.viable.join(' or '))}</em>`;
+      const lead = v ? `<div class="small muted">Lead ${v.margin.toFixed(3)} · a clear fit needs 0.08</div>${v.level === 'close' && d.plain ? `<div class="small plain">${esc(d.plain)}</div>` : ''}` : '';
       return `<a class="democard" href="${esc(d.href)}"><div class="eyebrow">Reference · ${esc(d.brief.referenceQuery)}</div><b>${esc(d.label)}</b><div class="small">${esc(d.brief.product)}</div>${badge}${lead}<span class="go">Run this brief →</span></a>`;
     }).join('');
   </script>

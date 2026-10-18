@@ -17,12 +17,13 @@ function skew(aud) {
 function driftPanel(c) {
   const d = c.drift;
   if (!d) return '';
-  if (d.flagged) return `<div class="drift flag"><div class="eyebrow">Drift Check · Warning</div><p>${esc(d.message)}</p>
-    <p class="small muted" style="font-family:var(--sans)">TasteCast shows this openly instead of re-tuning her taste to match her age.</p></div>`;
+  // An audience insight, not a defect: it matters only when a campaign targets an audience her taste skews away from.
+  if (d.flagged) return `<div class="drift flag"><div class="eyebrow">Audience insight · taste skews older</div><p>${esc(d.message)}</p>
+    <p class="small muted" style="font-family:var(--sans)">The brief page warns only when a campaign's target age is two or more brackets from where her taste seeds peak. TasteCast shows this openly instead of re-tuning her taste to match her age.</p></div>`;
   const msg = d.level === 'adjacent'
-    ? `${c.name}'s taste seeds peak one age bracket from her stated one (${AGE_LABEL[d.seedPeakBucket] ?? d.seedPeakBucket} vs ${AGE_LABEL[d.statedBucket] ?? d.statedBucket}). That is within tolerance, so there is no warning.`
-    : `${c.name}'s taste seeds peak in her stated age bracket (${AGE_LABEL[d.statedBucket] ?? d.statedBucket}). No drift.`;
-  return `<div class="drift"><div class="eyebrow">Drift Check · No warning</div><p>${esc(msg)}</p></div>`;
+    ? `${c.name}'s taste seeds peak one age bracket from her stated one (${AGE_LABEL[d.seedPeakBucket] ?? d.seedPeakBucket} vs ${AGE_LABEL[d.statedBucket] ?? d.statedBucket}). That is within tolerance.`
+    : `${c.name}'s taste seeds peak in her stated age bracket (${AGE_LABEL[d.statedBucket] ?? d.statedBucket}).`;
+  return `<div class="drift"><div class="eyebrow">Audience insight</div><p>${esc(msg)}</p></div>`;
 }
 
 function fitsTable(f) {
@@ -45,7 +46,7 @@ try {
         <div class="eyebrow">The roster · No. ${NO[c.slug] ?? ''}</div>
         <h1 class="display">${esc(c.name)}</h1>
         <p class="role">${esc(c.role)}</p>
-        <dl class="facts"><div><dt>Home city</dt><dd>${esc(c.city)}</dd></div><div><dt>Age</dt><dd>${c.age}</dd></div><div><dt>Drift</dt><dd>${c.drift?.flagged ? 'Warning' : 'None'}</dd></div></dl>
+        <dl class="facts"><div><dt>Home city</dt><dd>${esc(c.city)}</dd></div><div><dt>Age</dt><dd>${c.age}</dd></div><div><dt>Taste skew</dt><dd>${c.drift?.flagged ? `Peaks ${esc(AGE_LABEL[c.drift.seedPeakBucket] ?? '')}` : 'Matches her age'}</dd></div></dl>
         <p class="lede italic">${esc(c.tagline)}</p>
         <div class="disclose" style="margin-top:24px"><span class="chip solid">${esc(IDENTITY)}</span><span class="chip">${esc(DISCLOSURE)} on every endorsement</span></div>
         <div class="cta"><a class="btn arrow" href="/brief?character=${esc(c.slug)}">Brief ${esc(first)}</a><a class="btn ghost" href="#taste">Qloo taste profile</a></div>
@@ -73,7 +74,7 @@ try {
     ${t ? `<div class="taste">
       <div>
         <div class="panel"><h3>Audience skew</h3><p class="muted small">Qloo age and gender affinity of her taste seeds, averaged. Right of centre means over-indexed.</p>${skew(t.audience)}</div>
-        <div class="panel"><h3>Drift Check</h3>${driftPanel(c)}</div>
+        <div class="panel"><h3>Audience insight</h3>${driftPanel(c)}</div>
         <div class="panel"><h3>Strongest fits so far</h3>${fitsTable(c.fits)}</div>
       </div>
       <div>
