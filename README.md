@@ -62,7 +62,7 @@ node scripts/mcp-smoke.mjs https://tastecast.swanky-models.workers.dev/mcp 2
 # quote_license: US$11340 charged=false approvals={"character_operator":false,"brand":false}
 ```
 
-Stateless and session-free (official `@modelcontextprotocol/server` SDK, JSON responses). Tested with the SDK client, which negotiates protocol 2025-11-25.
+Stateless and session-free (official `@modelcontextprotocol/server` SDK, JSON responses). Tested with the SDK client, which negotiates protocol 2025-11-25, and with one raw 2026-07-28 `tools/list` request (`docs/milestone-4.md`).
 
 ## How Qloo powers it
 
@@ -76,7 +76,7 @@ Qloo is the decision-maker, not decoration. For each confirmed reference brand t
 
 Fit score = 0.6 × taste index + 0.4 × (cosine + 1) / 2. **"Qloo decided"** needs a lead of at least 0.08 **and** the taste index must pick the same leader by z-score and by raw lift. Otherwise it is a **close call**, with the viable characters and their tradeoffs.
 
-Where the numbers came from: the 0.08 margin and the two-measure agreement rule were written down before the sensitivity and robustness runs (`docs/milestone-2.md`). The 0.6/0.4 weights, the ±3σ mapping and the 0.02 SD floor were chosen during milestone 2 on 9 briefs, then frozen for the 12-brand robustness run. The three decisive demos were chosen from that run; Blue Bottle was kept as the close call. Seeds were not re-tuned to make any demo come out a particular way. 10 of 18 real briefs end as close calls (`docs/limitations.md`).
+Where the numbers came from: the 0.08 margin and the two-measure agreement rule were written down before the sensitivity and robustness runs (`docs/milestone-2.md`). The 0.6/0.4 weights, the ±3σ mapping and the 0.02 SD floor were chosen during milestone 2 on 9 briefs, then frozen for the milestone-3 robustness run (18 briefs with a real reference brand). The three decisive demos were chosen from those runs; Blue Bottle was kept as the close call. Seeds were not re-tuned to make any demo come out a particular way. 10 of 18 real briefs end as close calls (`docs/limitations.md`).
 
 Optional: Workers AI (Llama 3.3 70B) rewrites five copy lines once per package, in the background after the result is shown (the page swaps in the checked lines when they are ready). A checker rejects any rewrite that adds a name, a brand from the evidence, a number, first-person/testimonial wording, talent or licensing wording ("featuring", "starring", "licensed"), or a claim that the character uses the product ("daily", "routine"), or drops the disclosure or the "or similar" of a soundtrack direction. Rejected lines keep the template text, and evidence ids are never written by the model.
 

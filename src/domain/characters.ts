@@ -17,7 +17,7 @@ export interface CharacterDef {
   niches: string[];
   seeds: Seed[];
   houseBrand: string;
-  /** Approved v5 portfolio (6). Files live in the gitignored public/assets/characters/<slug>/ (see scripts/build-assets.py). */
+  /** Approved v5 portfolio (6). Web-size files are committed in public/assets/characters/<slug>/ (built by scripts/build-assets.py). */
   images: { file: string; alt: string; title: string }[];
   /** Approved v3 full-body reference (identity master) and v5 turnaround sheet. */
   reference: { file: string; alt: string };

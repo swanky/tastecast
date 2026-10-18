@@ -4,23 +4,23 @@ Written before the code, as the plan. Results are appended at the end.
 
 ## Goals
 
-1. **TasteCast is usable as an agent tool.** A remote MCP server at `/mcp` on the same Worker uses Streamable HTTP and the official MCP TypeScript SDK v2 (`createMcpHandler`). The SDK is stateless and serves both 2026-07-28 and 2025-era clients. It has five tools:
+1. **TasteCast is usable as an agent tool.** A remote MCP server at `/mcp` on the same Worker uses Streamable HTTP and the official MCP TypeScript SDK v2 (`createMcpHandler`). The SDK is stateless. Checked with the SDK client (negotiates 2025-11-25) and one raw 2026-07-28 `tools/list` request (see Verification). It has five tools:
    - `list_demo_briefs`: read-only, no Qloo calls.
    - `resolve_brand`
    - `rank_roster`
    - `draft_package`
    - `quote_license`
 
-   `rank_roster` only accepts a `candidate_id` that `resolve_brand` returned. The tool descriptions tell the calling agent to show the candidates to its user and confirm one, so the human checkpoint survives over MCP. The tools are thin wrappers around the HTTP routes and share one service layer, the same budget guard and the same `clientSafe` scrub.
+   `rank_roster` only accepts a `candidate_id` that `resolve_brand` returned. The tool descriptions tell the calling agent to show the candidates to its user and confirm one, so the confirmation step survives over MCP. The server can only check that the token came from that search, so an MCP run's trace says "confirmed by the calling agent" rather than claiming a person chose it. The tools are thin wrappers around the HTTP routes and share one service layer, the same budget guard and the same `clientSafe` scrub.
 2. **The agent run is visible.** `agentRun(match)` derives a step list from stored run data:
    - **plan:** the calls this brief needs, which depend on city, requested character and context.
    - **tool:** one per evidence step, with ev ids and cache state.
-   - **human:** the confirmed candidate, and whether it was an exact name match.
+   - **confirmation:** the confirmed candidate, whether it was an exact name match, and how it was confirmed: a person in the browser, a demo link that pressed Confirm (`confirm=1`), the calling MCP agent, or unknown (a stored run opened by id).
    - **check:** margin against threshold, the z leader and lift leader, coverage, the baseline-brand guard and the niche tiebreak.
    - **package:** template or AI copy, with the checker's verdict.
    - **stop:** why the loop ended.
 
-   The results page and `rank_roster` both render this list. Nothing in it is hard-coded copy.
+   The results page and `rank_roster` both render this list. The step order and the short phase descriptions are fixed text, and the plan is assembled from the brief by a template (labelled "derived from the brief, not generated"); what each step reports (entity, calls, cache hits, evidence ids, check results, verdict, package) comes from the run's data.
 3. **Demo set: three decisive briefs and one close call.**
    - Tajín → Itzel, Innisfree → Ari, Le Creuset → Ingrid, all expected decisive.
    - Blue Bottle → close call, kept on purpose.
@@ -86,4 +86,4 @@ Written before the code, as the plan. Results are appended at the end.
 
 **Fixed during verification.** Channel order changed the brief hash (Tajín demo stored twice). Channels are now canonicalised in `validateBrief`.
 
-**Verification.** 52 tests, typecheck, scan-public OK. Live Playwright at 1280 and 390: 4 demo cards, all 4 demos render banner + 13–14 agent-run steps + package + license, no console errors, no UUIDs, disclosure present; empty submit shows a pointer to the demos; `/brief?match=<id>` reloads a stored run. `GET /mcp` from a browser redirects to `/#agents`.
+**Verification.** At the time: 52 tests, typecheck, scan-public OK. Live Playwright at 1280 and 390: 4 demo cards, all 4 demos render banner + 13–14 agent-run steps + package + license, no console errors, no UUIDs, disclosure present. That 390 px check missed a horizontal overflow on result pages (page 432–445 px wide: timeline grid items without `min-width:0`, evidence chips set to `nowrap`); fixed on 2026-10-18 and re-measured locally with headless Chrome at 390×844 on all four demo runs (`scrollWidth` = `clientWidth` = 390). The suite is now 77 tests (75 run from a clean clone, 2 need a local Qloo cache); empty submit shows a pointer to the demos; `/brief?match=<id>` reloads a stored run. `GET /mcp` from a browser redirects to `/#agents`.

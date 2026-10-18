@@ -82,7 +82,7 @@ New briefs only (R1–R12, all four types): 5 of 12 Qloo decided, 7 close calls.
 **Flips** between the two variants: R3 changes winner (Ingrid → Itzel, both close calls). D2 and R5 go from clear to close. R6 goes from close to clear.
 
 **Disagreements with our expectations** are not bugs, but they are worth knowing:
-- Fender → Ingrid: Qloo's guitar audience is older (Joni Mitchell and Nick Cave seeds).
+- Fender → Ingrid: Ingrid wins on audience similarity (Fender's age and gender profile against hers: cosine +0.82, against −0.42 for Ari and −0.20 for Itzel). Her taste index is weak (+0.37σ, raw lift −0.008), but no one else's is stronger, so both measures still pick her.
 - Arc'teryx → Ingrid on audience, while the index prefers Itzel.
 - Glossier and Acne Studios → Itzel.
 - Ari's Qloo profile reads older than her stated age (her Drift Check warning), so Qloo rarely picks her for young-skewing brands.
@@ -119,4 +119,4 @@ New briefs only (R1–R12, all four types): 5 of 12 Qloo decided, 7 close calls.
   - the Drift Check panel: a warning on Ari only; Itzel's is labelled "within tolerance";
   - two links to "Brief <name>".
 - `/brief?character=<slug>` pre-selects the character. All three are still ranked. The verdict says where the requested character ranks, and the package and license are built for her.
-- Images and fonts are built by `scripts/build-assets.py` into the gitignored `public/assets/`. The committed manifest (`src/domain/characters.ts`) holds file names, titles and alt text only.
+- Images and fonts are built by `scripts/build-assets.py` into `public/assets/`. At this milestone that folder was gitignored; since the public repo it is tracked (web-size JPEGs, CC BY-NC 4.0, and OFL fonts). `src/domain/characters.ts` holds file names, titles and alt text.

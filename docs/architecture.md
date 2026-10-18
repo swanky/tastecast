@@ -19,16 +19,18 @@ Everything is proven with tests, live runs and a headless-Chrome screenshot.
 
 **Later (Milestone 4, live now):** Workers AI (Llama 3.3 70B) can rewrite five template lines once per stored package, using only each line's cited Qloo evidence. A checker rejects any rewrite that adds a name, an unmentioned evidence brand or a number, uses first-person or testimonial wording, writes evidence ids, drops the disclosure, or runs past 260 characters. A rejected line keeps the template text, and a failed AI call leaves the whole package on the template. Hosting (Cloudflare Workers) and the public repo also shipped. See [limitations.md](limitations.md) item 14 and [milestone-4.md](milestone-4.md).
 
-## 2. Decisions and deviations from roadmap-plan.md
+## 2. Decisions and deviations from the roadmap
+
+The roadmap (`roadmap-plan.md`) and the API spike notes (`spike-results-20261015.md`) are planning documents in the private photography repo; they are not in this repo.
 
 | Topic | Roadmap said | Built | Why |
 | --- | --- | --- | --- |
-| Framework | Next.js | **Hono + static HTML/JS** | Swanky asked for portability: the same `createApp()` runs on Node (local), Cloudflare Workers Free and Vercel (Hono adapters). No framework build step. |
+| Framework | Next.js | **Hono + static HTML/JS** | Swanky asked for portability: the same `createApp()` runs on Node (local) and Cloudflare Workers Free through Hono adapters (it is deployed on Workers). No framework build step. |
 | Brief parsing | LLM picks entity candidates | **Structured form + `/search`** | Kept after Workers AI was added: no LLM picks entities. The user confirms the Qloo entity, so every ID comes from Qloo. |
 | Package text | LLM writes it with source IDs | **Templates filled from Qloo results, then an optional checked Workers AI rewrite** | Every line carries a source evidence ID, always taken from the template line. The rewrite sees only that line's evidence; the checker rejects added names, brands, numbers, first-person wording or a dropped disclosure, and rejected lines keep the template text. |
 | Repo | `swanky/tastecast`, public | **Local git only** at this milestone | Public repo and host were Swanky's decision. Later published as `swanky/tastecast` and hosted on Cloudflare Workers. |
 
-## 3. Product loop (from spike-results-20261015.md, recommended usage)
+## 3. Product loop (from the spike's recommended usage)
 
 Precomputed once per character (`npm run precompute`, cached, gitignored):
 
@@ -84,9 +86,9 @@ Scores are relative signals, not purchase probability (see `docs/limitations.md`
 ```
 src/
   qloo/types.ts        Qloo response types used by the app (Entity, Tag, DemographicsRow, Explainability)
-  qloo/client.ts       QlooClient: GET only, X-Api-Key from env, redirect: 'manual', one retry on 429 after Retry-After, budget guard, call log
-  qloo/cache.ts        cacheKey(path, params) = path + sorted query; CachedQloo wraps client + KV store
-  store/kv.ts          KV interface; MemoryKV (tests, Workers fallback); FileKV (Node, ./cache, gitignored)
+  qloo/client.ts       QlooClient: GET only, X-Api-Key from env, redirect: 'manual', one retry on 429 after Retry-After, budget guard, call log;
+                       caching is inside the client: cacheKey(path, params) = path + sorted query, stored in KV under qloo:<key>
+  store/kv.ts          KV interface; MemoryKV (tests); FileKV (Node, ./cache, gitignored); store/workers-kv.ts (Workers KV); store/ip-limit.ts (per-network daily limit)
   domain/characters.ts static character definitions (English copy, seeds by name/type, city, age bucket, disclosure)
   domain/profile.ts    CharacterProfile type + buildProfiles() (P1–P4) + driftCheck()
   domain/score.ts      cosine, tagOverlap, fitScore, combine (pure, unit tested)
@@ -95,10 +97,16 @@ src/
   content/package.ts   buildPackage(match) -> EndorsementPackage; every line has sourceIds; ends with the disclosure
   content/license.ts   quote(package, brief) -> LicenseQuote (price displayed, charged: false)
   app.ts               createApp(deps): Hono routes
-  server.node.ts       Node entry: FileKV, serves public/
-  worker.ts            Cloudflare Workers entry (MemoryKV now; KV binding later)
-scripts/precompute.ts  builds cache/profiles.json
-scripts/scan-public.mjs fails on key values, cache/ or private/ files, or JSON with entity_id
+  agent/run.ts         agentRun(): the agent-run trace shown on the results page and returned by rank_roster
+  agent/affinity.ts    taste index (reverse affinity against the everyday-brand baseline)
+  content/copywriter.ts optional checked Workers AI rewrite of five copy lines
+  content/places.ts    shoot-location filter (other brands' shops, department stores, hotels/bars/clubs for non-hospitality products)
+  mcp.ts               MCP tools over the same service as the HTTP routes
+  server.node.ts       Node entry: FileKV, serves public/, binds 127.0.0.1
+  server.worker.ts     Cloudflare Workers entry: Workers KV, budget guards, per-network limit, branded 404
+scripts/precompute.ts  builds the character profiles and the baseline in ./cache (gitignored)
+scripts/build-demos.ts, precompute-instant.ts, robustness.ts, seed-kv.mjs  rebuild the stored runs (see README)
+scripts/scan-public.mjs fails on key values, cache/ or private/ files, JSON with entity_id, or UUID-shaped ids
 public/                index.html, brief.*, character.*, common.js, styles.css, assets/ (web-size images + OFL fonts)
 test/                  vitest unit tests
 ```
@@ -121,9 +129,9 @@ Evidence entries the client sees carry the endpoint, the parameter **names and d
 ## 6. Security and data rules
 
 - `QLOO_API_KEY` is read only on the server (`process.env` or the Workers `env`). It never appears in responses, logs or the client bundle; the client calls `/api/*` only.
-- Raw Qloo responses and derived profiles live in `cache/`, which is gitignored. `scripts/scan-public.mjs` guards every push.
+- Raw Qloo responses and derived profiles live in `cache/`, which is gitignored. `scripts/scan-public.mjs` runs in CI on every push (`.github/workflows/check.yml`) and, after `npm run hooks`, as a local pre-push hook.
 - The call log `cache/qloo-ledger.jsonl` records the timestamp, tag, path, status and latency only.
-- Budget: `QLOO_MAX_CALLS` (default 60) is enforced against the ledger. The client never retries a 401 or 403.
+- Budget: `QLOO_MAX_CALLS` (default 300 in `src/qloo/client.ts` and `wrangler.toml`) is enforced against the ledger; the deployed site adds a public sub-cap (`QLOO_PUBLIC_MAX_CALLS`, 40) and a per-network daily limit. The client never retries a 401 or 403.
 - Fictional brands only in the demo. The brand's real **reference** brand is the Qloo seed, and the UI says so.
 - Every endorsement output carries `#ad · AI-generated character`.
 
