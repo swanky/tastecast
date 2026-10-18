@@ -12,7 +12,7 @@ export async function hashIp(ip: string) {
 /** Per-IP daily allowance for requests that need live Qloo calls. Requests answered from stored results
  *  (demo briefs, cached searches) never reach this, so they cost no KV write and are never limited.
  *  One KV read and one write per live request, and only on its first network call. The IP is stored
- *  only as a salted hash and the counter expires after two days. */
+ *  only as a hash (SHA-256 with a fixed, public prefix: pseudonymised, not anonymous) and the counter expires after two days. */
 export class IpDailyLimit {
   private charged = false;
   constructor(private ns: KVNamespaceLike, private ipHash: string, private kind: LimitKind,

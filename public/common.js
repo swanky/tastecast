@@ -24,7 +24,8 @@ export function chrome(active) {
       <div><a class="logo" href="/">Taste<em>Cast</em></a>
         <p>Every character on TasteCast is an original AI character, not a real person, and not a real user of any product. Every endorsement is labelled <strong>${esc(DISCLOSURE)}</strong>.</p></div>
       <div><p>Taste data: Qloo Insights API. Scores are relative affinity signals, not purchase probability. Prices are shown for the demo and never charged.</p>
-        <p class="muted small">A SWANKY MODELS demo for the Qloo hackathon.</p></div>
+        <p class="small">Place, brand and artist names in packages are Qloo-sourced references for mood and location, not endorsements by them or permissions to use them.</p>
+        <p class="muted small">Copy rewrite: Built with Llama (Llama 3.3 70B on Cloudflare Workers AI), checked line by line. A SWANKY MODELS demo for the Qloo hackathon.</p></div>
     </div></footer>`);
 }
 

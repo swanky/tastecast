@@ -1,6 +1,6 @@
 {
   "name": "tastecast",
-  "version": "1.0.0",
+  "version": "1.5.0",
   "description": "TasteCast: Qloo-grounded matching of brand briefs to disclosed AI characters",
   "scripts": {
     "dev": "tsx src/server.node.ts",
@@ -11,7 +11,8 @@
     "scan-public": "node scripts/scan-public.mjs",
     "dev:worker": "wrangler dev --local",
     "seed-kv": "node scripts/seed-kv.mjs",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "hooks": "git config core.hooksPath .githooks"
   },
   "license": "MIT",
   "dependencies": {

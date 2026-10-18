@@ -1,0 +1,4 @@
+#!/bin/sh
+# Installed by `npm run hooks` (git config core.hooksPath .githooks). Blocks a push that would publish
+# the Qloo key, cache/private files, raw Qloo JSON or entity ids.
+npm run --silent scan-public || { echo "pre-push: scan-public failed, push blocked" >&2; exit 1; }

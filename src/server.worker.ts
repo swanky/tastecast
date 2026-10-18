@@ -5,6 +5,8 @@ import { WorkersKV, type KVNamespaceLike } from './store/workers-kv.js';
 import { hashIp, IpDailyLimit, type LimitKind } from './store/ip-limit.js';
 import { handleMcp, mcpPreflight } from './mcp.js';
 import type { AiLike } from './content/copywriter.js';
+import { CHARACTERS } from './domain/characters.js';
+import { SECURITY_HEADERS } from './headers.js';
 
 /** Cloudflare Workers entry. Static files (public/, including the locally built assets) are served by
  *  the Workers assets binding before this code runs; only /api/* and the /c/:slug page reach the worker.
@@ -48,14 +50,29 @@ export default {
     const waitUntil = (ctx as { waitUntil?: (p: Promise<unknown>) => void } | undefined)?.waitUntil?.bind(ctx);
     const deps = { qloo, qlooFor, kv, ai: env.AI, defer: waitUntil, flags: { s5Panel: env.S5_PANEL === 'on' } };
     const root = new Hono();
+    root.use('*', async (c, next) => {
+      await next();
+      const res = new Response(c.res.body, c.res);
+      for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.headers.set(k, v);
+      c.res = res;
+    });
+    /** Branded 404 page (public/404.html, served by the assets binding as /404). */
+    const notFound = async (url: string, raw: Request) => {
+      const page = await env.ASSETS.fetch(new Request(new URL('/404', url), raw));
+      return new Response(page.ok ? page.body : 'Not found', { status: 404, headers: { 'content-type': 'text/html; charset=utf-8' } });
+    };
     root.options('/mcp', () => mcpPreflight());
     root.get('/mcp', async (c) => ((c.req.header('accept') ?? '').includes('text/html') ? c.redirect('/#agents', 302) : handleMcp(c.req.raw, deps)));
     root.on(['POST', 'DELETE'], '/mcp', (c) => handleMcp(c.req.raw, deps));
     root.route('/', createApp(deps));
     // "/character" is character.html under the assets default html_handling (auto-trailing-slash).
-    root.get('/c/:slug', (c) => env.ASSETS.fetch(new Request(new URL('/character', c.req.url), c.req.raw)));
+    root.get('/c/:slug', (c) => (CHARACTERS.some((x) => x.slug === c.req.param('slug')) ? env.ASSETS.fetch(new Request(new URL('/character', c.req.url), c.req.raw)) : notFound(c.req.url, c.req.raw)));
     root.get('/brief', (c) => env.ASSETS.fetch(new Request(new URL('/brief', c.req.url), c.req.raw)));
-    root.all('*', (c) => env.ASSETS.fetch(c.req.raw));
+    root.all('*', async (c) => {
+      const res = await env.ASSETS.fetch(c.req.raw);
+      if (res.status !== 404 || c.req.method !== 'GET' || c.req.path.startsWith('/api/')) return res;
+      return notFound(c.req.url, c.req.raw);
+    });
     return root.fetch(req, env, ctx as never);
   },
 };

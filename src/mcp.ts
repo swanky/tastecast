@@ -8,7 +8,9 @@ import { CHARACTERS, DISCLOSURE } from './domain/characters.js';
 import { quote } from './content/license.js';
 import { agentRun } from './agent/run.js';
 
-export const MCP_SERVER_INFO = { name: 'tastecast', version: '1.4.0' };
+import pkg from '../package.json' with { type: 'json' };
+/** Same version as package.json, so the MCP handshake and the repo never disagree. */
+export const MCP_SERVER_INFO = { name: 'tastecast', version: pkg.version };
 
 const briefSchema = z.object({
   brandName: z.string().min(1).max(80).describe('The client brand (often small or fictional; it does not need to be on Qloo).'),
@@ -60,7 +62,8 @@ export function buildMcpServer(deps: Deps, origin: string) {
     title: 'Resolve a reference brand on Qloo',
     description: 'Searches Qloo for a reference brand and returns candidates with opaque candidate_id tokens. Exact name matches are flagged; same-name duplicates are labelled and the more popular one is preselected. Show these candidates to your user and ask them to confirm one before calling rank_roster. TasteCast never ranks against an unconfirmed entity. Instant reference brands (stored Qloo results, no new calls): ' + INSTANT_BRANDS.map((b) => b.query).join(', ') + '.',
     inputSchema: z.object({ query: z.string().min(1).max(80).describe('Reference brand name, e.g. "Le Creuset".') }),
-    annotations: { readOnlyHint: true, openWorldHint: true },
+    // Not read-only: a search that is not stored yet spends a Qloo call and stores the candidates in KV.
+    annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: true },
   }, async ({ query }) => guarded(async () => {
     const r = await svc.resolve(query);
     if (r.status !== 200) return fail(String(r.body.error));
