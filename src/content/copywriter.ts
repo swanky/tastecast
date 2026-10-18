@@ -36,13 +36,19 @@ const USE_CLAIM = /\b(daily|every ?day|routine|ritual|habit|go-to|staple|swears?
  *  - no brand named in the run's evidence appears unless the original line already named it,
  *  - every number already appears in the original line,
  *  - no first-person or testimonial wording, the disclosure survives where it was, and the length is sane,
+ *  - the character and every Qloo-sourced name in the line (place, artist) are kept, and the disclosure is not moved into it,
  *  - no talent or licensing wording ("featuring", "starring", "licensed"…) and no claim that she uses the product
  *    ("daily", "routine"…) unless the template line already had it; a soundtrack line keeps "or similar".
  * Evidence ids are not written by the model: the line keeps exactly the ids of the template line it replaces.
  */
-export function checkLine(original: string, rewritten: string, allowedNames: string[], evidenceBrands: string[]): string | null {
+export function checkLine(original: string, rewritten: string, allowedNames: string[], evidenceBrands: string[], mustKeep: string[] = []): string | null {
   const t = rewritten.trim();
   if (!t) return 'empty';
+  // The line's Qloo chips (a place, an artist) and the character must still be in it, or the sources stop matching the text.
+  const fold = (x: string) => x.toLowerCase().normalize('NFC');
+  const dropped = mustKeep.find((n) => fold(original).includes(fold(n)) && !fold(t).includes(fold(n)));
+  if (dropped) return `drops a sourced name: ${dropped}`;
+  if (!original.includes(DISCLOSURE) && t.includes(DISCLOSURE)) return 'adds the disclosure to a visual line (it belongs in the supers)';
   if (t.length > 260) return 'too long';
   if (/\bev\d+\b/i.test(t)) return 'writes evidence ids itself';
   if (original.includes(DISCLOSURE) && !t.includes(DISCLOSURE)) return 'drops the disclosure';
@@ -67,6 +73,9 @@ export function checkLine(original: string, rewritten: string, allowedNames: str
   }
   return null;
 }
+
+/** Shot locations named in a line ("NOPI by Ottolenghi, Soho"): the place part must survive a rewrite. */
+const placesIn = (p: EndorsementPackage, text: string) => (p.shotList ?? []).map((s) => s.location.split(',')[0].trim()).filter((n) => n.length > 2 && text.includes(n));
 
 function extractJson(out: unknown): Record<string, string> | null {
   const o = out as { response?: unknown } | null;
@@ -110,7 +119,9 @@ export async function rewriteCopy(pkg: EndorsementPackage, evidence: Evidence[],
   const accepted: string[] = []; const rejected: { line: string; reason: string }[] = [];
   for (const s of SLOTS) {
     const orig = s.get(pkg).text; const cand = typeof res[s.key] === 'string' ? res[s.key] : '';
-    const why = checkLine(orig, cand, allowedNames, brandNames);
+    const line = s.get(pkg);
+    const sourced = line.sourceIds.flatMap((id) => evById.get(id)?.results ?? []);
+    const why = checkLine(orig, cand, allowedNames, brandNames, [pkg.character.name, ...sourced, ...placesIn(pkg, orig)]);
     if (why) rejected.push({ line: s.key, reason: why }); else { s.set(out, cand.trim()); accepted.push(s.key); }
   }
   out.copy = accepted.length ? { mode: 'ai', model: COPY_MODEL, accepted, rejected } : { mode: 'template', model: COPY_MODEL, reason: 'all-rejected', accepted, rejected };

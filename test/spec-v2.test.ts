@@ -10,6 +10,7 @@ import { audienceInsight, productKind } from '../src/content/creative.js';
 import { exportCase } from '../src/content/export.js';
 import { quote } from '../src/content/license.js';
 import { DISCLOSURE } from '../src/domain/characters.js';
+import { checkLine } from '../src/content/copywriter.js';
 import type { MatchCore } from '../src/agent/match.js';
 
 const drift = (stated: string, peak: string) => ({ statedBucket: stated, seedPeakBucket: peak, level: stated === peak ? 'none' : 'drift', flagged: stated !== peak, bucketGap: 0, vector: { age: {}, female: 0.5 }, message: '' }) as never;
@@ -96,6 +97,15 @@ describe('status, verdict wording and audience insight (items 1 and 5)', () => {
     expect(q.production_included).toBe(false);
     expect(q.casting.status).toBe('preview');
     expect(q.summary.join(' ')).toMatch(/Production .* not included/);
+  });
+});
+
+describe('copy checker keeps sources honest', () => {
+  it('a rewrite may not drop the character or a Qloo-sourced place, or move the disclosure into a visual', () => {
+    const o = 'Ingrid Brekkhus studies the glaze on a small pot she made at NOPI by Ottolenghi, Soho.';
+    expect(checkLine(o, 'A small handmade pot is displayed at a London location.', ['Ingrid Brekkhus'], [], ['Ingrid Brekkhus', 'NOPI by Ottolenghi'])).toMatch(/drops a sourced name/);
+    expect(checkLine(o, 'At NOPI by Ottolenghi in Soho, Ingrid Brekkhus studies the glaze on a small pot she made.', ['Ingrid Brekkhus'], [], ['Ingrid Brekkhus', 'NOPI by Ottolenghi'])).toBeNull();
+    expect(checkLine('End card with the logo.', `End card with the logo. ${DISCLOSURE}`, [DISCLOSURE], [])).toMatch(/disclosure/);
   });
 });
 
