@@ -36,7 +36,7 @@ const USE_CLAIM = /\b(daily|every ?day|routine|ritual|habit|go-to|staple|swears?
  *  - no brand named in the run's evidence appears unless the original line already named it,
  *  - every number already appears in the original line,
  *  - no first-person or testimonial wording, the disclosure survives where it was, and the length is sane,
- *  - the character and every Qloo-sourced name in the line (place, artist) are kept, and the disclosure is not moved into it,
+ *  - the character's first name and every Qloo-sourced name in the line (place, artist) are kept, and the disclosure is not moved into it,
  *  - no talent or licensing wording ("featuring", "starring", "licensed"…) and no claim that she uses the product
  *    ("daily", "routine"…) unless the template line already had it; a soundtrack line keeps "or similar".
  * Evidence ids are not written by the model: the line keeps exactly the ids of the template line it replaces.
@@ -74,8 +74,9 @@ export function checkLine(original: string, rewritten: string, allowedNames: str
   return null;
 }
 
-/** Shot locations named in a line ("NOPI by Ottolenghi, Soho"): the place part must survive a rewrite. */
-const placesIn = (p: EndorsementPackage, text: string) => (p.shotList ?? []).map((s) => s.location.split(',')[0].trim()).filter((n) => n.length > 2 && text.includes(n));
+/** Qloo shot locations named in a line ("NOPI by Ottolenghi, Soho"): the place part must survive a rewrite. The
+ *  generic fallback ("a London street (style cue: ...)") is not a Qloo place and may be reworded. */
+const placesIn = (p: EndorsementPackage, text: string) => (p.shotList ?? []).filter((s) => !/^a .+ street \(style cue/.test(s.location)).map((s) => s.location.split(',')[0].trim()).filter((n) => n.length > 2 && text.includes(n));
 
 function extractJson(out: unknown): Record<string, string> | null {
   const o = out as { response?: unknown } | null;
@@ -102,7 +103,7 @@ export async function rewriteCopy(pkg: EndorsementPackage, evidence: Evidence[],
   const allowedNames = [pkg.character.name, pkg.brand.name, pkg.brand.product, pkg.city, 'Qloo', DISCLOSURE];
   const prompt = [
     'You are a copy editor for a disclosed AI-character ad. Rewrite each line so it reads like a professional creative brief: concrete, warm, one or two sentences.',
-    'Hard rules: keep every fact, add none. Do not add any name, brand, place, number or claim that is not in that line. Do not use first person or testimonial wording; the character is fictional and not a real user, so never say she uses the product daily or as a routine. Artists are a soundtrack direction, not booked talent: never write featuring, starring, appears or licensed. Keep the text "' + DISCLOSURE + '" exactly where a line contains it. Do not mention evidence ids.',
+    'Hard rules: keep every fact, add none. Do not add any name, brand, place, number or claim that is not in that line. Do not use first person or testimonial wording; the character is fictional and not a real user, so never say she uses the product daily or as a routine. Artists are a soundtrack direction, not booked talent: never write featuring, starring, appears or licensed. Keep the text "' + DISCLOSURE + '" exactly where a line contains it, and do not add it to any other line (it is shown as a separate super). Keep the character\'s first name and every place and artist name the line already has. Do not mention evidence ids.',
     `Character: ${pkg.character.name}. Brand: ${pkg.brand.name}. Product: ${pkg.brand.product}. City: ${pkg.city}.`,
     'Return only JSON mapping each key to its rewritten text.',
     JSON.stringify(facts),
@@ -121,7 +122,7 @@ export async function rewriteCopy(pkg: EndorsementPackage, evidence: Evidence[],
     const orig = s.get(pkg).text; const cand = typeof res[s.key] === 'string' ? res[s.key] : '';
     const line = s.get(pkg);
     const sourced = line.sourceIds.flatMap((id) => evById.get(id)?.results ?? []);
-    const why = checkLine(orig, cand, allowedNames, brandNames, [pkg.character.name, ...sourced, ...placesIn(pkg, orig)]);
+    const why = checkLine(orig, cand, allowedNames, brandNames, [pkg.character.name.split(' ')[0], ...sourced, ...placesIn(pkg, orig)]);
     if (why) rejected.push({ line: s.key, reason: why }); else { s.set(out, cand.trim()); accepted.push(s.key); }
   }
   out.copy = accepted.length ? { mode: 'ai', model: COPY_MODEL, accepted, rejected } : { mode: 'template', model: COPY_MODEL, reason: 'all-rejected', accepted, rejected };

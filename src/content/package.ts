@@ -65,7 +65,7 @@ export interface CopyReport {
 }
 
 /** Bump when package building changes, so stored packages are rebuilt once from their stored match core. */
-export const COPY_VERSION = 7;
+export const COPY_VERSION = 8;
 
 /** Shot pattern from the character image QA gate (kept in the private photography repo): at most one look to camera, varied head angle and lens. */
 const SHOT_PATTERN = [
