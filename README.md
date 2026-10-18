@@ -62,7 +62,7 @@ Smoke test with the official SDK client (uses a demo brief, no live Qloo calls):
 npm install
 node scripts/mcp-smoke.mjs https://tastecast.swanky-models.workers.dev/mcp 2
 # rank_roster: Clear fit · based on Qloo data (decided) lead 0.38 / needs 0.08; served stored; ...
-#   agent run: plan → check → tool → tool → tool → tool → tool → check → check → check → check → tool → stop
+#   agent run: plan → check → tool → tool → tool → tool → tool → check → check → check → check → check → tool → stop
 # quote_license: US$11340 charged=false approvals={"character_operator":false,"brand":false}
 ```
 
