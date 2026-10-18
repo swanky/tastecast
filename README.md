@@ -119,8 +119,10 @@ Checks:
 npm test             # 77 tests; from a clean clone 75 run and 2 are skipped (they need a local Qloo cache). No network.
 npm run typecheck
 npm run scan-public  # fails on cache/, .env, the key, raw Qloo JSON or UUID-shaped ids (any case, with or without dashes)
-npm run hooks        # optional: run scan-public before every git push (CI runs all three on every push)
+npm run hooks        # optional: run scan-public before every git push
 ```
+
+A GitHub Actions workflow that runs all three checks on every push is in `docs/ci/check.yml`; copy it to `.github/workflows/` to enable it (it is not committed there because adding workflows needs a token with the `workflow` scope).
 
 The git history was squashed before the repo was made public; the milestone docs (`docs/milestone-2.md` … `milestone-4.md`) record how it was built.
 

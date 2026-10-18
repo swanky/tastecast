@@ -129,7 +129,7 @@ Evidence entries the client sees carry the endpoint, the parameter **names and d
 ## 6. Security and data rules
 
 - `QLOO_API_KEY` is read only on the server (`process.env` or the Workers `env`). It never appears in responses, logs or the client bundle; the client calls `/api/*` only.
-- Raw Qloo responses and derived profiles live in `cache/`, which is gitignored. `scripts/scan-public.mjs` runs in CI on every push (`.github/workflows/check.yml`) and, after `npm run hooks`, as a local pre-push hook.
+- Raw Qloo responses and derived profiles live in `cache/`, which is gitignored. `scripts/scan-public.mjs` runs as a local pre-push hook after `npm run hooks`; `docs/ci/check.yml` is a ready GitHub Actions workflow (copy it to `.github/workflows/` to run it on every push).
 - The call log `cache/qloo-ledger.jsonl` records the timestamp, tag, path, status and latency only.
 - Budget: `QLOO_MAX_CALLS` (default 300 in `src/qloo/client.ts` and `wrangler.toml`) is enforced against the ledger; the deployed site adds a public sub-cap (`QLOO_PUBLIC_MAX_CALLS`, 40) and a per-network daily limit. The client never retries a 401 or 403.
 - Fictional brands only in the demo. The brand's real **reference** brand is the Qloo seed, and the UI says so.

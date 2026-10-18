@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Fails (exit 1) if tracked or staged files would leak the Qloo key, cache/private files, or raw Qloo JSON.
-// Runs in CI (.github/workflows/check.yml) and, once `npm run hooks` is run, before every git push.
+// Runs before every git push once `npm run hooks` is run, and in CI if docs/ci/check.yml is copied to .github/workflows/.
 import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 const files = execSync('git ls-files --cached --others --exclude-standard', { encoding: 'utf8' }).split('\n').filter(Boolean);
